@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>TEO-XR Web - Sharp Command Center</title>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    
+    <script>
+        // ========================================================
+        // 1. KOMPONEN TOMBOL
+        // ========================================================
+        AFRAME.registerComponent('mqtt-button', {
+            schema: { topic: {type: 'string'}, payload: {type: 'string'}, isTest: {type: 'boolean', default: false} },
+            init: function () {
+                var data = this.data; var el = this.el;
+                el.addEventListener('mouseenter', () => el.setAttribute('scale', '1.05 1.05 1.05'));
+                el.addEventListener('mouseleave', () => el.setAttribute('scale', '1 1 1'));
+                el.addEventListener('click', function () {
+                    el.setAttribute('scale', '0.9 0.9 0.9');
+                    setTimeout(() => el.setAttribute('scale', '1.05 1.05 1.05'), 150);
+                    
+                    if (data.isTest) {
+                        if (window.startStepTest) window.startStepTest();
+                    } else if (window.sendMqttCommand) {
+                        window.sendMqttCommand(data.topic, data.payload);
+                    }
+                });
+            }
+        });
+
+        // ========================================================
+        // 2. KOMPONEN SLIDER (Native Text)
+        // ========================================================
+        AFRAME.registerComponent('xr-slider', {
+            schema: {
+                topic: {type: 'string'}, min: {type: 'number', default: 0}, max: {type: 'number', default: 100},
+                width: {type: 'number', default: 2.2}, value: {type: 'number', default: 0},
+                label: {type: 'string', default: 'VAL'}, isFloat: {type: 'boolean', default: false} 
+            },
+            init: function () {
+                this.track = document.createElement('a-plane');
+                this.track.setAttribute('width', this.data.width); this.track.setAttribute('height', '0.12');
+                this.track.setAttribute('color', '#185b9d'); this.track.setAttribute('opacity', '0.3');
+                this.track.classList.add('clickable');
+
+                this.fill = document.createElement('a-plane');
+                this.fill.setAttribute('height', '0.14'); this.fill.setAttribute('color', '#00e5ff');
+
+                this.text = document.createElement('a-text');
+                this.text.setAttribute('position', '0 0.20 0');
+                this.text.setAttribute('align', 'center');
+                this.text.setAttribute('color', '#00e5ff');
+                this.text.setAttribute('width', '4'); 
+
+                this.el.appendChild(this.track); this.el.appendChild(this.fill); this.el.appendChild(this.text);
+                
+                let self = this;
+                this.track.addEventListener('click', function (evt) {
+                    let localPoint = self.el.object3D.worldToLocal(evt.detail.intersection.point.clone());
+                    let percent = (localPoint.x + self.data.width / 2) / self.data.width;
+                    if (percent < 0) percent = 0; if (percent > 1) percent = 1;
+                    let val = percent * (self.data.max - self.data.min) + self.data.min;
+                    if (!self.data.isFloat) val = Math.round(val);
+                    self.setValue(val);
+                    if (window.sendMqttCommand) window.sendMqttCommand(self.data.topic, self.data.isFloat ? val.toFixed(2) : val);
+                });
+                this.setValue(this.data.value);
+            },
+            setValue: function(val) {
+                let percent = (val - this.data.min) / (this.data.max - this.data.min);
+                let fillWidth = percent * this.data.width; let fillX = (-this.data.width / 2) + (fillWidth / 2);
+                this.fill.setAttribute('width', fillWidth); this.fill.setAttribute('position', fillX + ' 0 0.01');
+                
+                let displayVal = this.data.isFloat ? val.toFixed(2) : Math.round(val);
+                this.text.setAttribute('value', `${this.data.label}: ${displayVal}`);
+                
+                if (this.data.label === "Kp") window.currentKp = val;
+                if (this.data.label === "Ki") window.currentKi = val;
+                if (this.data.label === "Kd") window.currentKd = val;
+                if (this.data.label === "TARGET RPM") window.currentSetpoint = val;
+                if (this.data.label === "RAW PWM") window.currentPwm = val;
+            }
+        });
+
+        // ========================================================
+        // 3. KOMPONEN GRAFIK (XR CHART)
+        // ========================================================
+        AFRAME.registerComponent('xr-chart', {
+            schema: { width: {type: 'number', default: 1024}, height: {type: 'number', default: 512} },
+            init: function() {
+                this.canvas = document.createElement('canvas');
+                this.canvas.width = this.data.width; this.canvas.height = this.data.height;
+                this.ctx = this.canvas.getContext('2d');
+                this.dataPoints = []; this.maxPoints = 80;
+                this.texture = new THREE.CanvasTexture(this.canvas);
+                this.material = new THREE.MeshBasicMaterial({ map: this.texture, transparent: true });
+                let mesh = this.el.getObject3D('mesh');
+                if (mesh) { mesh.material = this.material; } 
+                else { this.el.addEventListener('model-loaded', () => { this.el.getObject3D('mesh').material = this.material; }); }
+                this.drawChart();
+            },
+            updateData: function(val) {
+                this.dataPoints.push(val);
+                if(this.dataPoints.length > this.maxPoints) this.dataPoints.shift();
+                this.drawChart();
+            },
+            drawChart: function() {
+                let ctx = this.ctx; let w = this.canvas.width; let h = this.canvas.height;
+                ctx.clearRect(0, 0, w, h);
+                ctx.fillStyle = 'rgba(10, 17, 40, 0.4)'; ctx.fillRect(0, 0, w, h);
+                ctx.strokeStyle = 'rgba(0, 229, 255, 0.3)'; ctx.lineWidth = 4; ctx.strokeRect(0, 0, w, h);
+                if(this.dataPoints.length > 1) {
+                    ctx.beginPath(); ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 8;
+                    let step = w / (this.maxPoints - 1);
+                    for(let i = 0; i < this.dataPoints.length; i++) {
+                        let x = i * step; let y = h - ((this.dataPoints[i] / 200) * h); 
+                        if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                    }
+                    ctx.stroke();
+                }
+                if(this.texture) this.texture.needsUpdate = true;
+            }
+        });
+        // ========================================================
+        // 5. KOMPONEN SMART ZOOM (Scroll PC & Pinch HP)
+        // ========================================================
+        AFRAME.registerComponent('smart-zoom', {
+            init: function () {
+                let camEl = this.el;
+                let currentFov = 80; // FOV standar A-Frame
+
+                // Zoom dengan Scroll Mouse (PC)
+                window.addEventListener('wheel', function (e) {
+                    currentFov += Math.sign(e.deltaY) * 5;
+                    currentFov = Math.max(30, Math.min(110, currentFov)); // Batas zoom 30 (dekat) - 110 (jauh)
+                    camEl.setAttribute('camera', 'fov', currentFov);
+                });
+
+                // Zoom dengan Pinch (Cubit Layar HP)
+                let initialDist = null;
+                window.addEventListener('touchstart', function(e) {
+                    if (e.touches.length === 2) {
+                        initialDist = Math.hypot(
+                            e.touches[0].pageX - e.touches[1].pageX,
+                            e.touches[0].pageY - e.touches[1].pageY
+                        );
+                    }
+                });
+
+                window.addEventListener('touchmove', function(e) {
+                    if (e.touches.length === 2 && initialDist !== null) {
+                        let currentDist = Math.hypot(
+                            e.touches[0].pageX - e.touches[1].pageX,
+                            e.touches[0].pageY - e.touches[1].pageY
+                        );
+                        let diff = initialDist - currentDist;
+                        
+                        currentFov += diff * 0.15; // Sensitivitas cubitan
+                        currentFov = Math.max(30, Math.min(110, currentFov));
+                        camEl.setAttribute('camera', 'fov', currentFov);
+                        
+                        initialDist = currentDist;
+                    }
+                });
+
+                window.addEventListener('touchend', function(e) {
+                    if (e.touches.length < 2) initialDist = null;
+                });
+            }
+        });
+
+    </script>
+</head>
+<body>
+
+    <a-scene background="color: #03050a" cursor="rayOrigin: mouse">
+        <a-assets><img id="logo" src="logo.png"></a-assets>
+
+        <a-grid width="100" height="100" color="#0a1128" rotation="-90 0 0" opacity="0.5"></a-grid>
+        <a-light type="ambient" color="#555"></a-light>
+        <a-light type="point" intensity="1.5" color="#00e5ff" position="0 6 2"></a-light>
+
+        <a-entity position="0 1.6 0">
+            <a-camera look-controls wasd-controls>
+                <a-cursor color="#ff2a6d" raycaster="objects: .clickable" 
+                          animation__click="property: scale; startEvents: click; easing: easeInCubic; dur: 150; from: 0.1 0.1 0.1; to: 1 1 1">
+                </a-cursor>
+            </a-camera>
+        </a-entity>
+
+        <a-entity position="0 2.5 -8" scale="1.7 1.7 1.7">
+            <a-entity geometry="primitive: plane; width: 6; height: 3.8" material="color: #0A1128; opacity: 0.3; transparent: true" position="0 -0.5 -0.05"></a-entity>
+            <a-entity geometry="primitive: plane; width: 6.1; height: 3.9" material="color: #00e5ff; opacity: 0.1; transparent: true" position="0 -0.5 -0.06"></a-entity>
+
+            <a-image src="#logo" position="-2.3 0.8 0.01" width="0.8" height="0.8"></a-image>
+            <a-text value="TEO-XR TELECONTROL" color="#ffffff" align="left" width="6" position="-1.7 1.0 0.01"></a-text>
+            <a-text value="XR COMMAND CENTER" color="#00e5ff" align="left" width="4" position="-1.7 0.7 0.01"></a-text>
+            <a-text id="xr-status" value="OFFLINE" color="#ff2a6d" align="center" width="5" position="2.2 0.8 0.01"></a-text>
+
+            <a-entity position="0 -0.2 0.01">
+                <a-plane width="1.5" height="0.7" color="#185b9d" opacity="0.4" position="-1.5 0 0">
+                    <a-text value="LIVE RPM" color="#a0aec0" align="center" width="3" position="0 0.2 0.01"></a-text>
+                    <a-text id="xr-rpm" value="0.0" color="#ffffff" align="center" width="8" position="0 -0.05 0.01"></a-text>
+                </a-plane>
+
+                <a-plane width="1.5" height="0.7" color="#ff2a6d" opacity="0.15" position="1.5 0 0">
+                    <a-text value="SYS ERROR" color="#ff2a6d" align="center" width="3" position="0 0.2 0.01"></a-text>
+                    <a-text id="xr-error" value="0.0" color="#ff2a6d" align="center" width="8" position="0 -0.05 0.01"></a-text>
+                </a-plane>
+            </a-entity>
+
+            <a-entity position="0 -1.3 0.01">
+                <a-entity xr-slider="topic: robot1/setpoint; label: TARGET RPM; min: 0; max: 200; value: 120; width: 5.2"></a-entity>
+            </a-entity>
+        </a-entity>
+
+        <a-entity position="0 1.6 0">
+            <a-camera look-controls wasd-controls smart-zoom>
+                <a-cursor color="#ff2a6d" raycaster="objects: .clickable" 
+                          animation__click="property: scale; startEvents: click; easing: easeInCubic; dur: 150; from: 0.1 0.1 0.1; to: 1 1 1">
+                </a-cursor>
+            </a-camera>
+        </a-entity>
+
+        <a-entity position="-8.5 2.5 -5.5" rotation="0 40 0" scale="1.5 1.5 1.5">
+            <a-entity geometry="primitive: plane; width: 4.8; height: 3.8" material="color: #0A1128; opacity: 0.3; transparent: true" position="0 -0.5 -0.05"></a-entity>
+            
+            <a-entity position="-1.5 0 0.01">
+                <a-text value="MODES" color="#00e5ff" align="center" width="4" position="0 0.9 0"></a-text>
+                
+                <a-entity geometry="primitive: box; depth: 0.05; height: 0.35; width: 1.4" material="color: #ff2a6d" mqtt-button="topic: robot1/mode; payload: STOP" position="0 0.5 0" class="clickable">
+                    <a-text value="STOP" align="center" width="4" position="0 0 0.03" color="#ffffff"></a-text>
+                </a-entity>
+                <a-entity geometry="primitive: box; depth: 0.05; height: 0.35; width: 1.4" material="color: #050914" mqtt-button="topic: robot1/mode; payload: PID" position="0 0.05 0" class="clickable">
+                    <a-text value="PID" align="center" width="4" position="0 0 0.03" color="#00e5ff"></a-text>
+                </a-entity>
+                <a-entity geometry="primitive: box; depth: 0.05; height: 0.35; width: 1.4" material="color: #050914" mqtt-button="topic: robot1/mode; payload: MANUAL" position="0 -0.4 0" class="clickable">
+                    <a-text value="MANUAL" align="center" width="4" position="0 0 0.03" color="#00e5ff"></a-text>
+                </a-entity>
+                
+                <a-text value="VECTOR" color="#00e5ff" align="center" width="4" position="0 -0.85 0"></a-text>
+                <a-entity geometry="primitive: box; depth: 0.05; height: 0.35; width: 1.4" material="color: #185b9d" mqtt-button="topic: robot1/direction; payload: FORWARD" position="0 -1.25 0" class="clickable">
+                    <a-text value="FWD" align="center" width="4" position="0 0 0.03" color="#ffffff"></a-text>
+                </a-entity>
+                <a-entity geometry="primitive: box; depth: 0.05; height: 0.35; width: 1.4" material="color: #185b9d" mqtt-button="topic: robot1/direction; payload: BACKWARD" position="0 -1.7 0" class="clickable">
+                    <a-text value="BWD" align="center" width="4" position="0 0 0.03" color="#ffffff"></a-text>
+                </a-entity>
+            </a-entity>
+
+            <a-entity position="1 0 0.01">
+                <a-text value="TUNING" color="#00e5ff" align="center" width="4" position="0 0.9 0"></a-text>
+                
+                <a-entity position="0 0.5 0" xr-slider="topic: robot1/pid/kp; label: Kp; min: 0; max: 5; value: 1.5; width: 2.2; isFloat: true"></a-entity>
+                <a-entity position="0 0 0" xr-slider="topic: robot1/pid/ki; label: Ki; min: 0; max: 1; value: 0.05; width: 2.2; isFloat: true"></a-entity>
+                <a-entity position="0 -0.5 0" xr-slider="topic: robot1/pid/kd; label: Kd; min: 0; max: 2; value: 0.1; width: 2.2; isFloat: true"></a-entity>
+                <a-entity position="0 -1.0 0" xr-slider="topic: robot1/manual_pwm; label: PWM; min: 0; max: 255; value: 0; width: 2.2"></a-entity>
+
+                <a-entity geometry="primitive: box; depth: 0.05; height: 0.45; width: 2.2" material="color: #050914" mqtt-button="topic: robot1/config; payload: TRIGGER" position="0 -1.7 0" class="clickable">
+                    <a-text value="TRANSMIT DATA" align="center" width="3.5" position="0 0 0.03" color="#00e5ff"></a-text>
+                </a-entity>
+                <a-entity geometry="primitive: box; depth: 0.05; height: 0.45; width: 2.2" material="color: #4ba3d3" mqtt-button="isTest: true" position="0 -2.3 0" class="clickable">
+                    <a-text value="INIT STEP TEST" align="center" width="3.5" position="0 0 0.03" color="#ffffff"></a-text>
+                </a-entity>
+            </a-entity>
+        </a-entity>
+
+        <a-entity position="8.5 2.5 -5.5" rotation="0 -40 0" scale="1.5 1.5 1.5">
+            <a-entity geometry="primitive: plane; width: 4.8; height: 3.8" material="color: #0A1128; opacity: 0.3; transparent: true" position="0 -0.5 -0.05"></a-entity>
+            <a-text value="RESPONSE MATRIX" color="#00e5ff" align="center" width="5" position="0 0.8 0.01"></a-text>
+            
+            <a-entity id="live-chart" geometry="primitive: plane; width: 4.2; height: 2.5" xr-chart position="0 -0.6 0.01"></a-entity>
+            
+            <a-text value="TIME DOMAIN (50ms Interval)" color="#888888" align="center" width="3" position="0 -2.0 0.01"></a-text>
+        </a-entity>
+
+    </a-scene>
+
+    <script>
+        const mqttServer = "3ed3ff9607bb421593226daf3b27b6f4.s1.eu.hivemq.cloud";
+        const mqttPort = 8884; 
+        const mqttUser = "teoxr";
+        const mqttPass = "TEOxr073";
+        const clientId = "WebXR-Cockpit-" + Math.random().toString(16).substr(2, 8);
+        
+        const client = new Paho.MQTT.Client(mqttServer, mqttPort, clientId);
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        window.currentKp = 1.5; window.currentKi = 0.05; window.currentKd = 0.1;
+        window.currentSetpoint = 120; window.currentPwm = 0;
+
+        window.sendMqttCommand = function(topic, payload) {
+            if (topic === "robot1/config") {
+                sendSingle("robot1/pid/kp", window.currentKp);
+                sendSingle("robot1/pid/ki", window.currentKi);
+                sendSingle("robot1/pid/kd", window.currentKd);
+                sendSingle("robot1/setpoint", window.currentSetpoint);
+                sendSingle("robot1/manual_pwm", window.currentPwm);
+            } else {
+                sendSingle(topic, payload);
+            }
+        };
+
+        function sendSingle(t, p) {
+            if (client.isConnected()) {
+                const message = new Paho.MQTT.Message(p.toString());
+                message.destinationName = t;
+                client.send(message);
+            }
+        }
+
+        window.startStepTest = function() {
+            sendSingle("robot1/mode", "PID");
+            sendSingle("robot1/config", "TRIGGER"); 
+        };
+
+        function connectMQTT() {
+            client.connect({ userName: mqttUser, password: mqttPass, useSSL: true, onSuccess: onConnect, onFailure: (err) => { setTimeout(connectMQTT, 5000); } });
+        }
+
+        function onConnect() {
+            document.getElementById('xr-status').setAttribute('value', 'ONLINE');
+            document.getElementById('xr-status').setAttribute('color', '#00e5ff');
+            client.subscribe("robot1/response");
+        }
+
+        function onConnectionLost() {
+            document.getElementById('xr-status').setAttribute('value', 'OFFLINE');
+            document.getElementById('xr-status').setAttribute('color', '#ff2a6d');
+            setTimeout(connectMQTT, 3000);
+        }
+
+        function onMessageArrived(message) {
+            if (message.destinationName === "robot1/response") {
+                const data = JSON.parse(message.payloadString);
+                
+                document.getElementById('xr-rpm').setAttribute('value', data.speed.toFixed(1));
+                document.getElementById('xr-error').setAttribute('value', data.error.toFixed(1));
+                
+                const chartEl = document.getElementById('live-chart');
+                if(chartEl && chartEl.components['xr-chart']) chartEl.components['xr-chart'].updateData(data.speed);
+            }
+        }
+        connectMQTT();
+    </script>
+</body>
+</html>
