@@ -1,304 +1,440 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Imroatus AR Telecontrol</title>
-    
-    <!-- Libraries -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+    <title>TEO-XR Web - Sharp Command Center</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    
+    <script>
+        // ========================================================
+        // 1. KOMPONEN TOMBOL FUTURISTIK
+        // ========================================================
+        AFRAME.registerComponent('mqtt-button', {
+            schema: { topic: {type: 'string'}, payload: {type: 'string'}, isTest: {type: 'boolean', default: false} },
+            init: function () {
+                var data = this.data; var el = this.el;
+                el.addEventListener('mouseenter', () => {
+                    el.setAttribute('scale', '1.05 1.05 1.05');
+                    el.setAttribute('material', 'opacity', '0.9');
+                });
+                el.addEventListener('mouseleave', () => {
+                    el.setAttribute('scale', '1 1 1');
+                    el.setAttribute('material', 'opacity', '0.6');
+                });
+                el.addEventListener('click', function () {
+                    el.setAttribute('scale', '0.9 0.9 0.9');
+                    setTimeout(() => el.setAttribute('scale', '1.05 1.05 1.05'), 150);
+                    
+                    if (data.isTest) {
+                        if (window.startStepTest) window.startStepTest();
+                    } else if (window.sendMqttCommand) {
+                        window.sendMqttCommand(data.topic, data.payload);
+                    }
+                });
+            }
+        });
 
-    <style>
-        body { margin: 0; overflow: hidden; background-color: #000; color: white; }
-        /* Style untuk UI transparan ala Hologram di AR */
-        #dom-overlay {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none; /* Biarkan klik tembus ke 3D kecuali di area panel */
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            padding: 20px;
-            box-sizing: border-box;
-            z-index: 10;
-        }
-        .ar-panel {
-            pointer-events: auto; /* Area ini bisa diklik di AR */
-            background: rgba(10, 20, 40, 0.8);
-            border: 1px solid #0ff;
-            backdrop-filter: blur(10px);
-            border-radius: 12px;
-            padding: 15px;
-            max-width: 600px;
-            width: 100%;
-            margin: 0 auto;
-        }
-        .hud-text { font-family: monospace; color: #0ff; }
-        .hud-red { color: #ff0055; }
-        
-        /* Hilangkan background VR saat mode AR aktif */
-        .a-dom-overlay:not(.a-no-style) { background: transparent !important; }
-    </style>
+        // ========================================================
+        // 2. KOMPONEN SLIDER (CYBERPUNK STYLE)
+        // ========================================================
+        AFRAME.registerComponent('xr-slider', {
+            schema: {
+                topic: {type: 'string'}, min: {type: 'number', default: 0}, max: {type: 'number', default: 100},
+                width: {type: 'number', default: 2.2}, value: {type: 'number', default: 0},
+                label: {type: 'string', default: 'VAL'}, isFloat: {type: 'boolean', default: false} 
+            },
+            init: function () {
+                // Background Track Transparan
+                this.track = document.createElement('a-plane');
+                this.track.setAttribute('width', this.data.width); this.track.setAttribute('height', '0.08');
+                this.track.setAttribute('color', '#004466'); this.track.setAttribute('opacity', '0.4');
+                this.track.classList.add('clickable');
+
+                // Fill Bar Menyala
+                this.fill = document.createElement('a-plane');
+                this.fill.setAttribute('height', '0.10'); this.fill.setAttribute('color', '#00e5ff');
+                this.fill.setAttribute('material', 'shader: flat'); // Agar terang benderang
+
+                // Teks Label
+                this.text = document.createElement('a-text');
+                this.text.setAttribute('position', '0 0.18 0');
+                this.text.setAttribute('align', 'center');
+                this.text.setAttribute('color', '#00e5ff');
+                this.text.setAttribute('width', '3.5'); 
+
+                this.el.appendChild(this.track); this.el.appendChild(this.fill); this.el.appendChild(this.text);
+                
+                let self = this;
+                this.track.addEventListener('click', function (evt) {
+                    let localPoint = self.el.object3D.worldToLocal(evt.detail.intersection.point.clone());
+                    let percent = (localPoint.x + self.data.width / 2) / self.data.width;
+                    if (percent < 0) percent = 0; if (percent > 1) percent = 1;
+                    let val = percent * (self.data.max - self.data.min) + self.data.min;
+                    if (!self.data.isFloat) val = Math.round(val);
+                    self.setValue(val);
+                    if (window.sendMqttCommand) window.sendMqttCommand(self.data.topic, self.data.isFloat ? val.toFixed(2) : val);
+                });
+                this.setValue(this.data.value);
+            },
+            setValue: function(val) {
+                let percent = (val - this.data.min) / (this.data.max - this.data.min);
+                let fillWidth = percent * this.data.width; let fillX = (-this.data.width / 2) + (fillWidth / 2);
+                this.fill.setAttribute('width', fillWidth); this.fill.setAttribute('position', fillX + ' 0 0.01');
+                
+                let displayVal = this.data.isFloat ? val.toFixed(2) : Math.round(val);
+                this.text.setAttribute('value', `${this.data.label}: ${displayVal}`);
+                
+                if (this.data.label === "Kp") window.currentKp = val;
+                if (this.data.label === "Ki") window.currentKi = val;
+                if (this.data.label === "Kd") window.currentKd = val;
+                if (this.data.label === "TARGET RPM") window.currentSetpoint = val;
+                if (this.data.label === "RAW PWM") window.currentPwm = val;
+            }
+        });
+
+        // ========================================================
+        // 3. KOMPONEN GRAFIK (XR CHART DUAL LINE)
+        // ========================================================
+        AFRAME.registerComponent('xr-chart', {
+            schema: { width: {type: 'number', default: 1024}, height: {type: 'number', default: 512} },
+            init: function() {
+                this.canvas = document.createElement('canvas');
+                this.canvas.width = this.data.width; this.canvas.height = this.data.height;
+                this.ctx = this.canvas.getContext('2d');
+                
+                this.dataPoints = []; this.targetPoints = []; this.maxPoints = 80;
+                
+                this.texture = new THREE.CanvasTexture(this.canvas);
+                this.material = new THREE.MeshBasicMaterial({ map: this.texture, transparent: true });
+                let mesh = this.el.getObject3D('mesh');
+                if (mesh) { mesh.material = this.material; } 
+                else { this.el.addEventListener('model-loaded', () => { this.el.getObject3D('mesh').material = this.material; }); }
+                this.drawChart();
+            },
+            updateData: function(realVal, targetVal) {
+                this.dataPoints.push(realVal); this.targetPoints.push(targetVal);
+                if(this.dataPoints.length > this.maxPoints) {
+                    this.dataPoints.shift(); this.targetPoints.shift();
+                }
+                this.drawChart();
+            },
+            drawChart: function() {
+                let ctx = this.ctx; let w = this.canvas.width; let h = this.canvas.height;
+                ctx.clearRect(0, 0, w, h);
+                
+                // Background Transparan Glass
+                ctx.fillStyle = 'rgba(5, 11, 20, 0.6)'; ctx.fillRect(0, 0, w, h);
+                // Grid Lines Tipis
+                ctx.strokeStyle = 'rgba(0, 229, 255, 0.1)'; ctx.lineWidth = 1;
+                for(let i=1; i<4; i++) { ctx.beginPath(); ctx.moveTo(0, h*(i/4)); ctx.lineTo(w, h*(i/4)); ctx.stroke(); }
+
+                if(this.dataPoints.length > 1) {
+                    let step = w / (this.maxPoints - 1);
+                    
+                    // Garis Target (Merah Putus-putus)
+                    ctx.beginPath(); ctx.strokeStyle = 'rgba(255, 42, 109, 0.7)'; ctx.lineWidth = 3; ctx.setLineDash([10, 10]);
+                    for(let i = 0; i < this.targetPoints.length; i++) {
+                        let x = i * step; let y = h - ((this.targetPoints[i] / 200) * h); 
+                        if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                    }
+                    ctx.stroke(); ctx.setLineDash([]); 
+
+                    // Garis Real RPM (Biru Neon)
+                    ctx.beginPath(); ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 6;
+                    for(let i = 0; i < this.dataPoints.length; i++) {
+                        let x = i * step; let y = h - ((this.dataPoints[i] / 200) * h); 
+                        if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                    }
+                    ctx.stroke();
+                }
+                if(this.texture) this.texture.needsUpdate = true;
+            }
+        });
+
+        // ========================================================
+        // 4. SMART ZOOM
+        // ========================================================
+        AFRAME.registerComponent('smart-zoom', {
+            init: function () {
+                let camEl = this.el; let currentFov = 80;
+                window.addEventListener('wheel', function (e) {
+                    currentFov += Math.sign(e.deltaY) * 5; currentFov = Math.max(30, Math.min(110, currentFov));
+                    camEl.setAttribute('camera', 'fov', currentFov);
+                });
+                let initialDist = null;
+                window.addEventListener('touchstart', function(e) {
+                    if (e.touches.length === 2) initialDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+                });
+                window.addEventListener('touchmove', function(e) {
+                    if (e.touches.length === 2 && initialDist !== null) {
+                        let currentDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+                        currentFov += (initialDist - currentDist) * 0.15; currentFov = Math.max(30, Math.min(110, currentFov));
+                        camEl.setAttribute('camera', 'fov', currentFov); initialDist = currentDist;
+                    }
+                });
+                window.addEventListener('touchend', function(e) { if (e.touches.length < 2) initialDist = null; });
+            }
+        });
+    </script>
 </head>
 <body>
 
-    <!-- ========================================== -->
-    <!-- 1. 3D SCENE & AR CAMERA -->
-    <!-- ========================================== -->
-    <!-- Mode DOM Overlay diaktifkan agar HTML bisa disentuh di dalam AR -->
-    <a-scene webxr="optionalFeatures: dom-overlay; overlayElement: #dom-overlay;" 
-             background="color: #111" 
-             renderer="antialias: true; alpha: true">
-        
-        <!-- Panel 3D Hologram (MUNDUR 2.5 METER) -->
-        <!-- Z = -2.5 artinya 2.5 meter di depan Anda. Y = 1.5 artinya setinggi dada/mata -->
-        <a-entity id="hologram-panel" position="0 1.5 -2.5">
-            <a-text value="XR TELEMETRY LINK ESTABLISHED" color="#0ff" align="center" position="0 0.5 0" scale="0.8 0.8 0.8"></a-text>
-            <!-- Anda bisa menambahkan model 3D robot Anda di sini nanti -->
-            <a-box color="#0ff" wireframe="true" scale="0.5 0.5 0.5" animation="property: rotation; to: 0 360 0; loop: true; dur: 5000"></a-box>
+    <a-scene background="color: #020408" cursor="rayOrigin: mouse">
+
+        <!-- ========================================== -->
+        <!-- HOLODECK ENVIRONMENT (KEJUTAN 1)           -->
+        <!-- ========================================== -->
+        <a-grid width="100" height="100" color="#051024" rotation="-90 0 0" opacity="0.3"></a-grid>
+        <!-- Silinder Cyberpunk Berputar Mengelilingi Ruangan -->
+        <a-cylinder radius="12" height="15" color="#00e5ff" wireframe="true" opacity="0.03" material="side: back" open-ended="true" 
+                    animation="property: rotation; to: 0 -360 0; loop: true; dur: 90000; easing: linear"></a-cylinder>
+
+        <a-light type="ambient" color="#333"></a-light>
+        <a-light type="point" intensity="1.5" color="#00e5ff" position="0 5 0"></a-light>
+
+        <!-- KAMERA -->
+        <a-entity position="0 1.6 0">
+            <a-camera look-controls wasd-controls smart-zoom>
+                <a-cursor color="#ff2a6d" raycaster="objects: .clickable" 
+                          animation__click="property: scale; startEvents: click; easing: easeInCubic; dur: 150; from: 0.1 0.1 0.1; to: 1 1 1">
+                </a-cursor>
+            </a-camera>
         </a-entity>
 
-        <a-entity camera position="0 1.6 0" look-controls></a-entity>
+        <!-- ========================================== -->
+        <!-- PANEL TENGAH (UTAMA)                       -->
+        <!-- Koordinat diatur melengkung tanpa tabrakan -->
+        <!-- ========================================== -->
+        <a-entity position="0 2.2 -6.0" scale="1.1 1.1 1.1">
+            <!-- Glass Background -->
+            <a-entity geometry="primitive: plane; width: 6.2; height: 4.2" material="color: #030814; opacity: 0.8; transparent: true" position="0 0 -0.05"></a-entity>
+            <!-- Glowing Wireframe Border -->
+            <a-entity geometry="primitive: plane; width: 6.25; height: 4.25" material="color: #00e5ff; wireframe: true; opacity: 0.2" position="0 0 -0.04"></a-entity>
+            <!-- Top Header Accent -->
+            <a-entity geometry="primitive: plane; width: 6.2; height: 0.05" material="color: #00e5ff; shader: flat" position="0 2.075 -0.04"></a-entity>
+
+            <a-text value="TEO-XR COMMAND CORE" color="#ffffff" align="center" width="7" position="0 1.6 0.01"></a-text>
+            <a-text id="xr-status" value="OFFLINE" color="#ff2a6d" align="center" width="5" position="0 1.2 0.01"
+                    animation="property: opacity; to: 0.3; dir: alternate; loop: true; dur: 800"></a-text>
+
+            <!-- Holographic Core Ring (Kejutan 2) -->
+            <a-ring radius-inner="0.6" radius-outer="0.65" color="#00e5ff" position="0 0.1 0.01" opacity="0.4" 
+                    animation="property: rotation; to: 0 0 360; loop: true; dur: 5000; easing: linear"></a-ring>
+            <a-ring radius-inner="0.5" radius-outer="0.52" color="#ff2a6d" position="0 0.1 0.01" opacity="0.3" 
+                    animation="property: rotation; to: 0 0 -360; loop: true; dur: 3000; easing: linear" dashArray="5 5"></a-ring>
+
+            <!-- KOTAK RPM & ERROR YANG LEBIH RAPI -->
+            <a-entity position="-1.8 0.1 0.05">
+                <a-plane width="2.0" height="1.0" color="#0a1526" opacity="0.9">
+                    <a-plane width="2.0" height="0.04" color="#00e5ff" position="0 0.5 0.01"></a-plane>
+                    <a-text value="LIVE RPM" color="#00e5ff" align="center" width="3.5" position="0 0.3 0.01"></a-text>
+                    <a-text id="xr-rpm" value="0.0" color="#ffffff" align="center" width="9" position="0 -0.1 0.01"></a-text>
+                </a-plane>
+            </a-entity>
+
+            <a-entity position="1.8 0.1 0.05">
+                <a-plane width="2.0" height="1.0" color="#1a050d" opacity="0.9">
+                    <a-plane width="2.0" height="0.04" color="#ff2a6d" position="0 0.5 0.01"></a-plane>
+                    <a-text value="SYS ERROR" color="#ff2a6d" align="center" width="3.5" position="0 0.3 0.01"></a-text>
+                    <a-text id="xr-error" value="0.0" color="#ff2a6d" align="center" width="9" position="0 -0.1 0.01"></a-text>
+                </a-plane>
+            </a-entity>
+
+            <!-- Slider Setpoint Tengah -->
+            <a-entity position="0 -1.4 0.05">
+                <a-entity xr-slider="topic: robot1/setpoint; label: TARGET RPM; min: 0; max: 200; value: 120; width: 5.5"></a-entity>
+            </a-entity>
+        </a-entity>
+
+        <!-- ========================================== -->
+        <!-- PANEL KIRI (KONTROL & TUNING)              -->
+        <!-- X: -5.5, Z: -3.3, Rotasi Presisi 55 Derajat -->
+        <!-- ========================================== -->
+        <a-entity position="-5.5 2.2 -3.3" rotation="0 55 0" scale="1.1 1.1 1.1">
+            <a-entity geometry="primitive: plane; width: 5.0; height: 4.2" material="color: #030814; opacity: 0.8; transparent: true" position="0 0 -0.05"></a-entity>
+            <a-entity geometry="primitive: plane; width: 5.05; height: 4.25" material="color: #00e5ff; wireframe: true; opacity: 0.2" position="0 0 -0.04"></a-entity>
+            <a-entity geometry="primitive: plane; width: 5.0; height: 0.05" material="color: #00e5ff; shader: flat" position="0 2.075 -0.04"></a-entity>
+            
+            <a-text value="KINEMATIC TUNING" color="#00e5ff" align="center" width="5" position="0 1.6 0.01"></a-text>
+
+            <!-- Kolom Kiri: MODES & VECTOR -->
+            <a-entity position="-1.2 -0.2 0.01">
+                <a-text value="DRIVE MODES" color="#88aacc" align="center" width="3" position="0 1.1 0"></a-text>
+                
+                <a-entity geometry="primitive: plane; height: 0.4; width: 1.8" material="color: #ff2a6d; opacity: 0.6" mqtt-button="topic: robot1/mode; payload: STOP" position="0 0.6 0" class="clickable">
+                    <a-text value="STOP" align="center" width="4" position="0 0 0.03" color="#ffffff"></a-text>
+                </a-entity>
+                <a-entity geometry="primitive: plane; height: 0.4; width: 1.8" material="color: #00e5ff; opacity: 0.3" mqtt-button="topic: robot1/mode; payload: PID" position="0 0.1 0" class="clickable">
+                    <a-text value="PID" align="center" width="4" position="0 0 0.03" color="#ffffff"></a-text>
+                </a-entity>
+                <a-entity geometry="primitive: plane; height: 0.4; width: 1.8" material="color: #00e5ff; opacity: 0.3" mqtt-button="topic: robot1/mode; payload: MANUAL" position="0 -0.4 0" class="clickable">
+                    <a-text value="MANUAL" align="center" width="4" position="0 0 0.03" color="#ffffff"></a-text>
+                </a-entity>
+                
+                <a-entity geometry="primitive: plane; height: 0.3; width: 0.8" material="color: #4ba3d3; opacity: 0.5" mqtt-button="topic: robot1/direction; payload: FORWARD" position="-0.45 -1.1 0" class="clickable">
+                    <a-text value="FWD" align="center" width="3" position="0 0 0.03" color="#ffffff"></a-text>
+                </a-entity>
+                <a-entity geometry="primitive: plane; height: 0.3; width: 0.8" material="color: #4ba3d3; opacity: 0.5" mqtt-button="topic: robot1/direction; payload: BACKWARD" position="0.45 -1.1 0" class="clickable">
+                    <a-text value="BWD" align="center" width="3" position="0 0 0.03" color="#ffffff"></a-text>
+                </a-entity>
+            </a-entity>
+
+            <!-- Kolom Kanan: PID SLIDERS & ACTIONS -->
+            <a-entity position="1.2 -0.2 0.01">
+                <a-text value="PID PARAMS" color="#88aacc" align="center" width="3" position="0 1.1 0"></a-text>
+                
+                <a-entity position="0 0.6 0" xr-slider="topic: robot1/pid/kp; label: Kp; min: 0; max: 50; value: 1.5; width: 2.2; isFloat: true"></a-entity>
+                <a-entity position="0 0.1 0" xr-slider="topic: robot1/pid/ki; label: Ki; min: 0; max: 10; value: 0.05; width: 2.2; isFloat: true"></a-entity>
+                <a-entity position="0 -0.4 0" xr-slider="topic: robot1/pid/kd; label: Kd; min: 0; max: 10; value: 0.1; width: 2.2; isFloat: true"></a-entity>
+                <a-entity position="0 -0.9 0" xr-slider="topic: robot1/manual_pwm; label: PWM; min: 0; max: 255; value: 0; width: 2.2"></a-entity>
+
+                <a-entity geometry="primitive: plane; height: 0.35; width: 2.2" material="color: #00e5ff; opacity: 0.8" mqtt-button="topic: robot1/config; payload: TRIGGER" position="0 -1.5 0" class="clickable">
+                    <a-text value="TRANSMIT DATA" align="center" width="3" position="0 0 0.03" color="#030814"></a-text>
+                </a-entity>
+                <a-entity geometry="primitive: plane; height: 0.35; width: 2.2" material="color: #ff2a6d; opacity: 0.8" mqtt-button="isTest: true" position="0 -1.95 0" class="clickable">
+                    <a-text value="INIT STEP TEST" align="center" width="3" position="0 0 0.03" color="#ffffff"></a-text>
+                </a-entity>
+            </a-entity>
+        </a-entity>
+
+        <!-- ========================================== -->
+        <!-- PANEL KANAN (GRAFIK & METRIKS)             -->
+        <!-- X: 5.5, Z: -3.3, Rotasi Presisi -55 Derajat-->
+        <!-- ========================================== -->
+        <a-entity position="5.5 2.2 -3.3" rotation="0 -55 0" scale="1.1 1.1 1.1">
+            <a-entity geometry="primitive: plane; width: 5.0; height: 4.2" material="color: #030814; opacity: 0.8; transparent: true" position="0 0 -0.05"></a-entity>
+            <a-entity geometry="primitive: plane; width: 5.05; height: 4.25" material="color: #00e5ff; wireframe: true; opacity: 0.2" position="0 0 -0.04"></a-entity>
+            <a-entity geometry="primitive: plane; width: 5.0; height: 0.05" material="color: #00e5ff; shader: flat" position="0 2.075 -0.04"></a-entity>
+            
+            <a-text value="RESPONSE MATRIX" color="#00e5ff" align="center" width="5" position="0 1.6 0.01"></a-text>
+            
+            <!-- Grafik yang dibingkai -->
+            <a-entity position="0 0.1 0.01">
+                <a-entity geometry="primitive: plane; width: 4.5; height: 2.5" material="color: #00e5ff; wireframe: true; opacity: 0.3" position="0 0 -0.01"></a-entity>
+                <a-entity id="live-chart" geometry="primitive: plane; width: 4.4; height: 2.4" xr-chart position="0 0 0"></a-entity>
+            </a-entity>
+            
+            <!-- PANEL METRIKS PID FUTURISTIK -->
+            <a-entity position="0 -1.6 0.01">
+                <a-plane width="1.4" height="0.6" color="#051024" opacity="0.8" position="-1.5 0 0">
+                    <a-text value="RISE TIME" color="#88aacc" align="center" width="2.5" position="0 0.15 0.01"></a-text>
+                    <a-text id="xr-rise" value="0.0s" color="#00e5ff" align="center" width="4" position="0 -0.15 0.01"></a-text>
+                </a-plane>
+
+                <a-plane width="1.4" height="0.6" color="#1a050d" opacity="0.8" position="0 0 0">
+                    <a-text value="OVERSHOOT" color="#88aacc" align="center" width="2.5" position="0 0.15 0.01"></a-text>
+                    <a-text id="xr-over" value="0.0%" color="#ff2a6d" align="center" width="4" position="0 -0.15 0.01"></a-text>
+                </a-plane>
+
+                <a-plane width="1.4" height="0.6" color="#051024" opacity="0.8" position="1.5 0 0">
+                    <a-text value="SETTLING" color="#88aacc" align="center" width="2.5" position="0 0.15 0.01"></a-text>
+                    <a-text id="xr-settle" value="0.0s" color="#4ba3d3" align="center" width="4" position="0 -0.15 0.01"></a-text>
+                </a-plane>
+            </a-entity>
+        </a-entity>
+
     </a-scene>
 
-    <!-- ========================================== -->
-    <!-- 2. UI PANEL (DOM OVERLAY) -->
-    <!-- ========================================== -->
-    <div id="dom-overlay">
-        <div class="ar-panel shadow-lg shadow-cyan-500/50">
-            
-            <div class="flex justify-between items-center mb-2">
-                <h2 class="text-xl font-bold text-cyan-400">AR KINEMATIC CONTROL</h2>
-                <span id="status-text" class="text-red-500 font-bold animate-pulse">OFFLINE</span>
-            </div>
-
-            <!-- Bagian Grafik -->
-            <div class="w-full h-40 bg-gray-900 rounded border border-cyan-800 mb-2 p-1">
-                <canvas id="arChart"></canvas>
-            </div>
-
-            <!-- Bagian Metriks PID -->
-            <div class="grid grid-cols-3 gap-2 mb-2 text-center text-xs hud-text">
-                <div class="bg-gray-800 p-1 rounded border border-gray-600">
-                    <span class="text-gray-400">RISE TIME</span><br>
-                    <span id="riseTimeDisplay" class="text-lg text-cyan-300">0.0s</span>
-                </div>
-                <div class="bg-gray-800 p-1 rounded border border-gray-600">
-                    <span class="text-gray-400">OVERSHOOT</span><br>
-                    <span id="overshootDisplay" class="text-lg text-red-400">0.0%</span>
-                </div>
-                <div class="bg-gray-800 p-1 rounded border border-gray-600">
-                    <span class="text-gray-400">SETTLING TIME</span><br>
-                    <span id="settlingTimeDisplay" class="text-lg text-green-400">0.0s</span>
-                </div>
-            </div>
-
-            <!-- Bagian Kontrol (Slider Batas Diperbesar) -->
-            <div class="grid grid-cols-2 gap-4 text-sm mb-2">
-                <div>
-                    <label class="block text-gray-400 mb-1">MODE</label>
-                    <select id="mode" class="w-full bg-gray-800 text-cyan-400 p-1 rounded border border-cyan-800">
-                        <option value="STOP">STOP</option>
-                        <option value="MANUAL">MANUAL</option>
-                        <option value="PID">AUTO PID</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-gray-400 mb-1">TARGET RPM</label>
-                    <input type="number" id="targetRPM" value="0" class="w-full bg-gray-800 text-white p-1 rounded border border-cyan-800">
-                </div>
-            </div>
-
-            <div class="grid grid-cols-3 gap-2 text-sm mb-4">
-                <div>
-                    <label class="block text-gray-400 text-xs">Kp (Max 50)</label>
-                    <input type="number" id="kp" value="1.5" min="0" max="50" step="0.1" class="w-full bg-gray-800 text-white p-1 rounded border border-cyan-800">
-                </div>
-                <div>
-                    <label class="block text-gray-400 text-xs">Ki (Max 10)</label>
-                    <input type="number" id="ki" value="0.05" min="0" max="10" step="0.01" class="w-full bg-gray-800 text-white p-1 rounded border border-cyan-800">
-                </div>
-                <div>
-                    <label class="block text-gray-400 text-xs">Kd (Max 10)</label>
-                    <input type="number" id="kd" value="0.1" min="0" max="10" step="0.01" class="w-full bg-gray-800 text-white p-1 rounded border border-cyan-800">
-                </div>
-            </div>
-
-            <!-- Tombol Aksi -->
-            <div class="flex gap-2">
-                <button id="btnTransmit" class="flex-1 bg-cyan-700 hover:bg-cyan-600 text-white py-2 rounded font-bold transition-all">
-                    TRANSMIT DATA
-                </button>
-                <button id="btnStep" class="flex-1 bg-red-700 hover:bg-red-600 text-white py-2 rounded font-bold transition-all">
-                    INIT STEP RESPONSE
-                </button>
-            </div>
-            <button id="btnEnterAR" class="w-full mt-2 border border-cyan-500 text-cyan-400 py-1 rounded text-sm hover:bg-cyan-900 transition-all">
-                MASUK MODE AR / VR
-            </button>
-        </div>
-    </div>
-
-    <!-- ========================================== -->
-    <!-- 3. LOGIKA JAVASCRIPT (MQTT, CHART, PID MATH) -->
-    <!-- ========================================== -->
     <script>
-        // 1. Inisialisasi Grafik (2 Garis: Real vs Target)
-        const ctx = document.getElementById('arChart').getContext('2d');
-        const arChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [
-                    {
-                        label: 'REAL RPM',
-                        borderColor: '#00ffff',
-                        backgroundColor: 'rgba(0, 255, 255, 0.1)',
-                        borderWidth: 2,
-                        data: [],
-                        tension: 0.2,
-                        fill: true
-                    },
-                    {
-                        label: 'TARGET RPM',
-                        borderColor: '#ff0055',
-                        borderWidth: 2,
-                        borderDash: [5, 5], // Garis putus-putus
-                        data: [],
-                        tension: 0,
-                        pointRadius: 0
+        const mqttServer = "3ed3ff9607bb421593226daf3b27b6f4.s1.eu.hivemq.cloud";
+        const mqttPort = 8884; 
+        const mqttUser = "teoxr";
+        const mqttPass = "TEOxr073";
+        const clientId = "WebXR-Cockpit-" + Math.random().toString(16).substr(2, 8);
+        
+        const client = new Paho.MQTT.Client(mqttServer, mqttPort, clientId);
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        window.currentKp = 1.5; window.currentKi = 0.05; window.currentKd = 0.1;
+        window.currentSetpoint = 120; window.currentPwm = 0;
+
+        window.isStepActive = false; window.stepStartTime = 0;
+        window.maxRpm = 0; window.riseTimeFound = false;
+
+        window.sendMqttCommand = function(topic, payload) {
+            if (topic === "robot1/config") {
+                sendSingle("robot1/pid/kp", window.currentKp);
+                sendSingle("robot1/pid/ki", window.currentKi);
+                sendSingle("robot1/pid/kd", window.currentKd);
+                sendSingle("robot1/setpoint", window.currentSetpoint);
+                sendSingle("robot1/manual_pwm", window.currentPwm);
+            } else { sendSingle(topic, payload); }
+        };
+
+        function sendSingle(t, p) {
+            if (client.isConnected()) {
+                const message = new Paho.MQTT.Message(p.toString());
+                message.destinationName = t; client.send(message);
+            }
+        }
+
+        window.startStepTest = function() {
+            window.isStepActive = true; window.stepStartTime = Date.now();
+            window.maxRpm = 0; window.riseTimeFound = false;
+            document.getElementById('xr-rise').setAttribute('value', '...');
+            document.getElementById('xr-over').setAttribute('value', '0.0%');
+            document.getElementById('xr-settle').setAttribute('value', '...');
+            sendSingle("robot1/mode", "PID"); sendSingle("robot1/config", "TRIGGER"); 
+        };
+
+        function connectMQTT() {
+            client.connect({ userName: mqttUser, password: mqttPass, useSSL: true, onSuccess: onConnect, onFailure: (err) => { setTimeout(connectMQTT, 5000); } });
+        }
+
+        function onConnect() {
+            document.getElementById('xr-status').setAttribute('value', 'SYSTEM ONLINE');
+            document.getElementById('xr-status').setAttribute('color', '#00e5ff');
+            client.subscribe("robot1/response");
+        }
+
+        function onConnectionLost() {
+            document.getElementById('xr-status').setAttribute('value', 'SYSTEM OFFLINE');
+            document.getElementById('xr-status').setAttribute('color', '#ff2a6d');
+            setTimeout(connectMQTT, 3000);
+        }
+
+        function onMessageArrived(message) {
+            if (message.destinationName === "robot1/response") {
+                const data = JSON.parse(message.payloadString);
+                
+                document.getElementById('xr-rpm').setAttribute('value', data.speed.toFixed(1));
+                document.getElementById('xr-error').setAttribute('value', data.error.toFixed(1));
+                
+                const chartEl = document.getElementById('live-chart');
+                if(chartEl && chartEl.components['xr-chart']) {
+                    let target = (document.getElementById('xr-status').getAttribute('value') === 'SYSTEM ONLINE' && window.currentSetpoint > 0) ? window.currentSetpoint : 0;
+                    chartEl.components['xr-chart'].updateData(data.speed, target); 
+                }
+
+                if (window.isStepActive) {
+                    let timeElapsed = (Date.now() - window.stepStartTime) / 1000;
+                    let target = window.currentSetpoint;
+
+                    if (data.speed > window.maxRpm) {
+                        window.maxRpm = data.speed;
+                        if (window.maxRpm > target && target > 0) {
+                            let os = ((window.maxRpm - target) / target) * 100;
+                            document.getElementById('xr-over').setAttribute('value', os.toFixed(1) + '%');
+                        }
                     }
-                ]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                animation: false,
-                scales: {
-                    y: { beginAtZero: true, grid: { color: '#333' } },
-                    x: { display: false } // Sembunyikan label waktu agar rapi
-                },
-                plugins: { legend: { display: false } }
-            }
-        });
 
-        // 2. Variabel MQTT & Step Response
-        const mqtt_server = 'wss://3ed3ff9607bb421593226daf3b27b6f4.s1.eu.hivemq.cloud:8884/mqtt';
-        const options = { username: 'teoxr', password: 'TEOxr073' };
-        const client = mqtt.connect(mqtt_server, options);
+                    if (!window.riseTimeFound && data.speed >= target * 0.95 && target > 0) {
+                        document.getElementById('xr-rise').setAttribute('value', timeElapsed.toFixed(2) + 's');
+                        window.riseTimeFound = true;
+                    }
 
-        let isStepResponseActive = false;
-        let stepTarget = 0;
-        let stepStartTime = 0;
-        let maxRPM = 0;
-        let riseTimeFound = false;
-
-        // 3. Event Listener MQTT
-        client.on('connect', () => {
-            console.log('AR Connected to HiveMQ!');
-            document.getElementById('status-text').innerText = 'SYS_ONLINE';
-            document.getElementById('status-text').className = 'text-cyan-400 font-bold';
-            client.subscribe('robot1/response');
-        });
-
-        client.on('message', (topic, message) => {
-            if (topic === 'robot1/response') {
-                const data = JSON.parse(message.toString());
-                updateChart(data.speed, data.setpoint);
-                if (isStepResponseActive) calculateMetrics(data.speed, data.setpoint);
-            }
-        });
-
-        // 4. Update Grafik
-        let timeCounter = 0;
-        function updateChart(realRPM, targetRPM) {
-            timeCounter++;
-            arChart.data.labels.push(timeCounter);
-            arChart.data.datasets[0].data.push(realRPM);
-            arChart.data.datasets[1].data.push(targetRPM);
-
-            // Batasi data di layar agar tidak terlalu padat (misal 50 titik)
-            if (arChart.data.labels.length > 50) {
-                arChart.data.labels.shift();
-                arChart.data.datasets[0].data.shift();
-                arChart.data.datasets[1].data.shift();
-            }
-            arChart.update();
-        }
-
-        // 5. Kalkulasi Metriks PID
-        function calculateMetrics(currentRPM, target) {
-            const timeElapsed = (Date.now() - stepStartTime) / 1000; // dalam detik
-
-            // Hitung Overshoot (Nilai Puncak)
-            if (currentRPM > maxRPM) {
-                maxRPM = currentRPM;
-                if (maxRPM > target && target > 0) {
-                    let overshootPercent = ((maxRPM - target) / target) * 100;
-                    document.getElementById('overshootDisplay').innerText = overshootPercent.toFixed(1) + '%';
-                }
-            }
-
-            // Hitung Rise Time (Waktu mencapai target pertama kali)
-            if (!riseTimeFound && currentRPM >= target * 0.95 && target > 0) {
-                document.getElementById('riseTimeDisplay').innerText = timeElapsed.toFixed(2) + 's';
-                riseTimeFound = true;
-            }
-
-            // Hitung Settling Time (Stabil di batas +- 5% dari target)
-            if (riseTimeFound) {
-                let error = Math.abs(target - currentRPM);
-                if (error <= (target * 0.05)) {
-                    document.getElementById('settlingTimeDisplay').innerText = timeElapsed.toFixed(2) + 's';
+                    if (window.riseTimeFound) {
+                        let err = Math.abs(target - data.speed);
+                        if (err <= (target * 0.05)) {
+                            document.getElementById('xr-settle').setAttribute('value', timeElapsed.toFixed(2) + 's');
+                        }
+                    }
                 }
             }
         }
-
-        // 6. Fungsi Tombol Transmit
-        document.getElementById('btnTransmit').addEventListener('click', () => {
-            const mode = document.getElementById('mode').value;
-            client.publish('robot1/mode', mode);
-
-            if (mode === 'PID') {
-                client.publish('robot1/setpoint', document.getElementById('targetRPM').value);
-                client.publish('robot1/pid/kp', document.getElementById('kp').value);
-                client.publish('robot1/pid/ki', document.getElementById('ki').value);
-                client.publish('robot1/pid/kd', document.getElementById('kd').value);
-            }
-        });
-
-        // 7. Fungsi Tombol Step Response
-        document.getElementById('btnStep').addEventListener('click', () => {
-            // Reset Data Matriks
-            isStepResponseActive = true;
-            stepStartTime = Date.now();
-            maxRPM = 0;
-            riseTimeFound = false;
-            stepTarget = parseFloat(document.getElementById('targetRPM').value);
-            
-            document.getElementById('riseTimeDisplay').innerText = '...';
-            document.getElementById('overshootDisplay').innerText = '0.0%';
-            document.getElementById('settlingTimeDisplay').innerText = '...';
-
-            // Paksa masuk mode PID dan kirim parameter
-            document.getElementById('mode').value = 'PID';
-            client.publish('robot1/mode', 'PID');
-            client.publish('robot1/pid/kp', document.getElementById('kp').value);
-            client.publish('robot1/pid/ki', document.getElementById('ki').value);
-            client.publish('robot1/pid/kd', document.getElementById('kd').value);
-            client.publish('robot1/setpoint', stepTarget.toString());
-        });
-
-        // 8. Tombol Pintasan Masuk AR/VR
-        document.getElementById('btnEnterAR').addEventListener('click', () => {
-            const scene = document.querySelector('a-scene');
-            if (scene.hasLoaded) {
-                scene.enterVR(); // A-Frame otomatis menyajikan opsi AR jika didukung perangkat
-            }
-        });
-
+        connectMQTT();
     </script>
 </body>
 </html>
