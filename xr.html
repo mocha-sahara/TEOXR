@@ -1,16 +1,14 @@
 <!DOCTYPE html>
 <html lang="id">
-
 <head>
     <meta charset="UTF-8">
-    <title>TEO-XR Web - Command Center</title>
-    
+    <title>TEO-XR Web - Sharp Command Center</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     
     <script>
         // ========================================================
-        // KOMPONEN 1: PEMBUAT PANEL ROUNDED, GRADIENT & GLOW
+        // KOMPONEN: PEMBUAT PANEL ROUNDED, GRADIENT & GLOW
         // ========================================================
         AFRAME.registerComponent('sci-fi-panel', {
             schema: {
@@ -24,10 +22,12 @@
                 canvas.width = this.data.width * res; canvas.height = this.data.height * res;
                 let ctx = canvas.getContext('2d');
                 let w = canvas.width; let h = canvas.height;
-                let r = 80; 
+                
+                let r = 80; // Radius Membulat
 
                 ctx.clearRect(0,0,w,h);
 
+                // 1. Bentuk Dasar Panel
                 ctx.beginPath();
                 ctx.moveTo(r, 0); ctx.lineTo(w-r, 0); ctx.quadraticCurveTo(w, 0, w, r);
                 ctx.lineTo(w, h-r); ctx.quadraticCurveTo(w, h, w-r, h);
@@ -35,16 +35,19 @@
                 ctx.lineTo(0, r); ctx.quadraticCurveTo(0, 0, r, 0);
                 ctx.closePath();
 
+                // 2. Efek Semu Gradien
                 let grad = ctx.createLinearGradient(0, 0, 0, h);
                 grad.addColorStop(0, 'rgba(0, 229, 255, 0.15)'); 
-                grad.addColorStop(1, 'rgba(5, 10, 25, 0.8)');   
+                grad.addColorStop(1, 'rgba(5, 10, 25, 0.8)');    
                 ctx.fillStyle = grad;
                 ctx.fill();
 
+                // 3. Garis Border Keliling
                 ctx.lineWidth = 6;
                 ctx.strokeStyle = this.data.borderColor;
                 ctx.stroke();
 
+                // 4. GARIS ATAS TERANG (Glow Effect)
                 ctx.beginPath();
                 ctx.moveTo(r, 0); ctx.lineTo(w-r, 0);
                 ctx.lineWidth = 12;
@@ -54,6 +57,7 @@
                 ctx.stroke();
                 ctx.shadowBlur = 0; 
 
+                // 5. Aksesoris Garis Miring Diagonal
                 if(this.data.diagonal) {
                     ctx.beginPath();
                     ctx.moveTo(0, h * 0.65); ctx.lineTo(w, h * 0.25);
@@ -78,7 +82,7 @@
         });
 
         // ========================================================
-        // KOMPONEN 2: TOMBOL MQTT
+        // KOMPONEN TOMBOL
         // ========================================================
         AFRAME.registerComponent('mqtt-button', {
             schema: { topic: {type: 'string'}, payload: {type: 'string'}, isTest: {type: 'boolean', default: false} },
@@ -108,18 +112,19 @@
         });
 
         // ========================================================
-        // KOMPONEN 3: SLIDER (DENGAN SNAPPING & TOMBOL +/-)
+        // KOMPONEN SLIDER (DENGAN TOMBOL + / -)
         // ========================================================
         AFRAME.registerComponent('xr-slider', {
             schema: {
                 topic: {type: 'string'}, min: {type: 'number', default: 0}, max: {type: 'number', default: 100},
                 width: {type: 'number', default: 2.2}, value: {type: 'number', default: 0},
                 label: {type: 'string', default: 'VAL'}, isFloat: {type: 'boolean', default: false},
-                step: {type: 'number', default: 1} 
+                step: {type: 'number', default: 1} // Menambahkan properti step (jarak tiap klik)
             },
             init: function () {
                 this.currentVal = this.data.value;
 
+                // 1. Buat Track Slider
                 this.track = document.createElement('a-plane');
                 this.track.setAttribute('width', this.data.width); this.track.setAttribute('height', '0.12');
                 this.track.setAttribute('color', '#0a1128'); this.track.setAttribute('opacity', '0.8');
@@ -145,18 +150,23 @@
                 
                 let self = this;
 
+                // Fungsi Klik pada Track Slider (dengan Snapping ke Step)
                 this.track.addEventListener('click', function (evt) {
                     let localPoint = self.el.object3D.worldToLocal(evt.detail.intersection.point.clone());
                     let percent = (localPoint.x + self.data.width / 2) / self.data.width;
                     if (percent < 0) percent = 0; if (percent > 1) percent = 1;
                     
                     let val = percent * (self.data.max - self.data.min) + self.data.min;
+                    // Snapping: Paksa membulat sesuai langkah step
                     val = Math.round(val / self.data.step) * self.data.step; 
 
                     self.setValue(val);
                     if (window.sendMqttCommand) window.sendMqttCommand(self.data.topic, self.data.isFloat ? val.toFixed(2) : val);
                 });
 
+                // =============================================
+                // 2. Fungsi Membuat Tombol + dan - 
+                // =============================================
                 const createControlBtn = (labelStr, offsetX) => {
                     let btn = document.createElement('a-entity');
                     btn.setAttribute('position', `${offsetX} 0 0.01`);
@@ -181,6 +191,7 @@
 
                     bg.appendChild(border); bg.appendChild(txt); btn.appendChild(bg);
 
+                    // Efek Hover Tombol +/-
                     btn.addEventListener('mouseenter', () => {
                         btn.setAttribute('scale', '1.1 1.1 1.1');
                         txt.setAttribute('color', '#ffffff');
@@ -196,9 +207,11 @@
                     return btn;
                 };
 
+                // Pasang Tombol di Kiri (-) dan Kanan (+) Slider
                 let btnMinus = createControlBtn('-', -(this.data.width / 2) - 0.25);
                 let btnPlus  = createControlBtn('+', (this.data.width / 2) + 0.25);
 
+                // Aksi Tombol Kurang (-)
                 btnMinus.addEventListener('click', () => {
                     btnMinus.setAttribute('scale', '0.8 0.8 0.8');
                     setTimeout(() => btnMinus.setAttribute('scale', '1.1 1.1 1.1'), 100);
@@ -207,6 +220,7 @@
                     if (window.sendMqttCommand) window.sendMqttCommand(self.data.topic, self.data.isFloat ? newVal.toFixed(2) : newVal);
                 });
 
+                // Aksi Tombol Tambah (+)
                 btnPlus.addEventListener('click', () => {
                     btnPlus.setAttribute('scale', '0.8 0.8 0.8');
                     setTimeout(() => btnPlus.setAttribute('scale', '1.1 1.1 1.1'), 100);
@@ -215,14 +229,18 @@
                     if (window.sendMqttCommand) window.sendMqttCommand(self.data.topic, self.data.isFloat ? newVal.toFixed(2) : newVal);
                 });
 
+                // Set Nilai Awal
                 this.setValue(this.data.value);
             },
             setValue: function(val) {
+                // Perbaiki error angka desimal Javascript (misal: 0.1 + 0.2 jadi 0.300004)
                 val = Math.round(val * 1000) / 1000; 
+
+                // Kunci (Clamp) agar tidak melewati batas Minimum & Maksimum
                 if (val < this.data.min) val = this.data.min;
                 if (val > this.data.max) val = this.data.max;
                 
-                this.currentVal = val; 
+                this.currentVal = val; // Simpan memori posisi sekarang
 
                 let percent = (val - this.data.min) / (this.data.max - this.data.min);
                 let fillWidth = percent * this.data.width; let fillX = (-this.data.width / 2) + (fillWidth / 2);
@@ -240,7 +258,7 @@
         });
 
         // ========================================================
-        // KOMPONEN 4: GRAFIK (XR CHART)
+        // KOMPONEN GRAFIK (XR CHART)
         // ========================================================
         AFRAME.registerComponent('xr-chart', {
             schema: { width: {type: 'number', default: 1024}, height: {type: 'number', default: 512} },
@@ -295,7 +313,7 @@
         });
 
         // ========================================================
-        // KOMPONEN 5: SMART ZOOM
+        // KOMPONEN SMART ZOOM
         // ========================================================
         AFRAME.registerComponent('smart-zoom', {
             init: function () {
@@ -321,8 +339,10 @@
             }
         });
 
-        // ========================================================
-        // KOMPONEN 6: ROTASI UNIVERSAL (PC, MOBILE, OCULUS VR)
+<!-- ini  -->
+
+// ========================================================
+        // KOMPONEN ROTASI UNIVERSAL (PC, MOBILE, OCULUS VR)
         // ========================================================
         AFRAME.registerComponent('universal-rotate', {
             schema: { speed: { default: 1 } },
@@ -331,7 +351,7 @@
                 this.lastX = 0;
                 this.lastY = 0;
 
-                // Mouse
+                // 1. Kontrol Laptop (Mouse)
                 document.addEventListener('mousedown', (e) => {
                     this.isDragging = true;
                     this.lastX = e.clientX; this.lastY = e.clientY;
@@ -345,7 +365,7 @@
                     this.lastX = e.clientX; this.lastY = e.clientY;
                 });
 
-                // Touch
+                // 2. Kontrol HP/Tablet (Touch)
                 document.addEventListener('touchstart', (e) => {
                     this.isDragging = true;
                     this.lastX = e.touches[0].clientX; this.lastY = e.touches[0].clientY;
@@ -359,68 +379,81 @@
                     this.lastX = e.touches[0].clientX; this.lastY = e.touches[0].clientY;
                 });
 
-                // VR Oculus Joystick
+                // 3. Kontrol Oculus Quest (Thumbstick/Joystick)
                 this.el.sceneEl.addEventListener('axismove', (e) => {
+                    // e.detail.axis[0] adalah joystick kiri/kanan (X)
+                    // e.detail.axis[1] adalah joystick atas/bawah (Y)
                     let joyX = e.detail.axis[0];
                     let joyY = e.detail.axis[1];
+                    
+                    // Filter "deadzone" agar tidak memutar sendiri saat joystick tidak disentuh
                     if (Math.abs(joyX) > 0.1 || Math.abs(joyY) > 0.1) {
-                        this.rotateObject(joyX, joyY, 0.05);
+                        this.rotateObject(joyX, joyY, 0.05); // Putaran lebih cepat untuk joystick
                     }
                 });
             },
             rotateObject: function(deltaX, deltaY, multiplier) {
+                // Jangan putar jika sedang mode aktif (misal menu terbuka) dan speed di-set 0
                 if (this.data.speed === 0) return; 
+
                 this.el.object3D.rotation.y += deltaX * multiplier * this.data.speed;
                 this.el.object3D.rotation.x += deltaY * multiplier * this.data.speed;
             }
         });
 
-        // ========================================================
-        // KOMPONEN 7: EFEK HOLOGRAM (Format OBJ)
+        // FUNGSI UNTUK MEMBUKA/MENUTUP PANEL
+        window.toggleCommandPanels = function() {
+            let panelGroup = document.getElementById('panel-group');
+            let btnText = document.getElementById('btn-text');
+            let isVisible = panelGroup.getAttribute('visible');
+            
+            // Balikkan visibilitas
+            panelGroup.setAttribute('visible', !isVisible);
+            
+            // Ubah teks tombol
+            if (!isVisible) {
+                btnText.setAttribute('value', 'CLOSE PANEL');
+                btnText.setAttribute('color', '#ff2a6d');
+            } else {
+                btnText.setAttribute('value', 'OPEN COMMAND');
+                btnText.setAttribute('color', '#00e5ff');
+            }
+        };
+// ========================================================
+        // KOMPONEN EFEK HOLOGRAM UNTUK DIGITAL TWIN (Format OBJ)
         // ========================================================
         AFRAME.registerComponent('hologram-effect', {
-            schema: { color: {type: 'color', default: '#00e5ff'}, opacity: {type: 'number', default: 0.6}, wireframe: {type: 'boolean', default: true} },
+            schema: {
+                color: {type: 'color', default: '#00e5ff'},
+                opacity: {type: 'number', default: 0.6},
+                wireframe: {type: 'boolean', default: true}
+            },
             init: function () {
                 this.el.addEventListener('model-loaded', () => {
                     const obj = this.el.getObject3D('mesh');
                     if (!obj) return;
+                    
                     obj.traverse((node) => {
                         if (node.isMesh) {
                             node.material = new THREE.MeshStandardMaterial({
-                                color: this.data.color, emissive: this.data.color, emissiveIntensity: 0.8,
-                                transparent: true, opacity: this.data.opacity, wireframe: this.data.wireframe,
-                                blending: THREE.AdditiveBlending, depthWrite: false
+                                color: this.data.color,
+                                emissive: this.data.color,
+                                emissiveIntensity: 0.8,
+                                transparent: true,
+                                opacity: this.data.opacity,
+                                wireframe: this.data.wireframe,
+                                blending: THREE.AdditiveBlending,
+                                depthWrite: false
                             });
                         }
                     });
                 });
             }
         });
+<!--sampe ini  -->
 
-        // ========================================================
-        // GLOBAL FUNCTION: FUNGSI UNTUK BUKA/TUTUP PANEL
-        // ========================================================
-        window.toggleCommandPanels = function() {
-            let panelGroup = document.getElementById('panel-group');
-            let btnText = document.getElementById('btn-text');
-            let motor = document.getElementById('holo-motor');
-            let isVisible = panelGroup.getAttribute('visible');
-            
-            panelGroup.setAttribute('visible', !isVisible);
-            
-            if (!isVisible) {
-                btnText.setAttribute('value', 'CLOSE PANEL');
-                btnText.setAttribute('color', '#ff2a6d');
-                motor.setAttribute('universal-rotate', 'speed', 0);
-            } else {
-                btnText.setAttribute('value', 'OPEN COMMAND');
-                btnText.setAttribute('color', '#00e5ff');
-                motor.setAttribute('universal-rotate', 'speed', 1);
-            }
-        };
     </script>
 </head>
-
 <body>
     <script>
         // Komponen Rotasi Universal (Mouse, Touch, Oculus Joystick)
@@ -538,8 +571,8 @@
         <a-entity laser-controls="hand: right" raycaster="objects: .clickable; far: 20" line="color: #00e5ff; opacity: 0.7"></a-entity>
 
         <a-entity id="holo-motor"
-                  position="0 2.5 -4" 
-                  scale="1.5 1.5 1.5" 
+                  position="-2 2.4 -5" 
+                  scale="0.8 0.8 0.8" 
                   obj-model="obj: #model-motor"
                   hologram-effect="color: #00e5ff; opacity: 0.5; wireframe: true"
                   universal-rotate="speed: 1">
@@ -776,3 +809,4 @@
         connectMQTT();
     </script>
 </body>
+</html>
