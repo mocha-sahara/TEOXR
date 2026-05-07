@@ -1,14 +1,16 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
     <meta charset="UTF-8">
-    <title>TEO-XR Web -  Command Center</title>
+    <title>TEO-XR Web - Command Center</title>
+    
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     
     <script>
         // ========================================================
-        // KOMPONEN: PEMBUAT PANEL ROUNDED, GRADIENT & GLOW
+        // KOMPONEN 1: PEMBUAT PANEL ROUNDED, GRADIENT & GLOW
         // ========================================================
         AFRAME.registerComponent('sci-fi-panel', {
             schema: {
@@ -22,12 +24,10 @@
                 canvas.width = this.data.width * res; canvas.height = this.data.height * res;
                 let ctx = canvas.getContext('2d');
                 let w = canvas.width; let h = canvas.height;
-                
-                let r = 80; // Radius Membulat
+                let r = 80; 
 
                 ctx.clearRect(0,0,w,h);
 
-                // 1. Bentuk Dasar Panel
                 ctx.beginPath();
                 ctx.moveTo(r, 0); ctx.lineTo(w-r, 0); ctx.quadraticCurveTo(w, 0, w, r);
                 ctx.lineTo(w, h-r); ctx.quadraticCurveTo(w, h, w-r, h);
@@ -35,19 +35,16 @@
                 ctx.lineTo(0, r); ctx.quadraticCurveTo(0, 0, r, 0);
                 ctx.closePath();
 
-                // 2. Efek Semu Gradien
                 let grad = ctx.createLinearGradient(0, 0, 0, h);
                 grad.addColorStop(0, 'rgba(0, 229, 255, 0.15)'); 
-                grad.addColorStop(1, 'rgba(5, 10, 25, 0.8)');    
+                grad.addColorStop(1, 'rgba(5, 10, 25, 0.8)');   
                 ctx.fillStyle = grad;
                 ctx.fill();
 
-                // 3. Garis Border Keliling
                 ctx.lineWidth = 6;
                 ctx.strokeStyle = this.data.borderColor;
                 ctx.stroke();
 
-                // 4. GARIS ATAS TERANG (Glow Effect)
                 ctx.beginPath();
                 ctx.moveTo(r, 0); ctx.lineTo(w-r, 0);
                 ctx.lineWidth = 12;
@@ -57,7 +54,6 @@
                 ctx.stroke();
                 ctx.shadowBlur = 0; 
 
-                // 5. Aksesoris Garis Miring Diagonal
                 if(this.data.diagonal) {
                     ctx.beginPath();
                     ctx.moveTo(0, h * 0.65); ctx.lineTo(w, h * 0.25);
@@ -82,7 +78,7 @@
         });
 
         // ========================================================
-        // KOMPONEN TOMBOL
+        // KOMPONEN 2: TOMBOL MQTT
         // ========================================================
         AFRAME.registerComponent('mqtt-button', {
             schema: { topic: {type: 'string'}, payload: {type: 'string'}, isTest: {type: 'boolean', default: false} },
@@ -112,19 +108,18 @@
         });
 
         // ========================================================
-        // KOMPONEN SLIDER (DENGAN TOMBOL + / -)
+        // KOMPONEN 3: SLIDER (DENGAN SNAPPING & TOMBOL +/-)
         // ========================================================
         AFRAME.registerComponent('xr-slider', {
             schema: {
                 topic: {type: 'string'}, min: {type: 'number', default: 0}, max: {type: 'number', default: 100},
                 width: {type: 'number', default: 2.2}, value: {type: 'number', default: 0},
                 label: {type: 'string', default: 'VAL'}, isFloat: {type: 'boolean', default: false},
-                step: {type: 'number', default: 1} // Menambahkan properti step (jarak tiap klik)
+                step: {type: 'number', default: 1} 
             },
             init: function () {
                 this.currentVal = this.data.value;
 
-                // 1. Buat Track Slider
                 this.track = document.createElement('a-plane');
                 this.track.setAttribute('width', this.data.width); this.track.setAttribute('height', '0.12');
                 this.track.setAttribute('color', '#0a1128'); this.track.setAttribute('opacity', '0.8');
@@ -150,23 +145,18 @@
                 
                 let self = this;
 
-                // Fungsi Klik pada Track Slider (dengan Snapping ke Step)
                 this.track.addEventListener('click', function (evt) {
                     let localPoint = self.el.object3D.worldToLocal(evt.detail.intersection.point.clone());
                     let percent = (localPoint.x + self.data.width / 2) / self.data.width;
                     if (percent < 0) percent = 0; if (percent > 1) percent = 1;
                     
                     let val = percent * (self.data.max - self.data.min) + self.data.min;
-                    // Snapping: Paksa membulat sesuai langkah step
                     val = Math.round(val / self.data.step) * self.data.step; 
 
                     self.setValue(val);
                     if (window.sendMqttCommand) window.sendMqttCommand(self.data.topic, self.data.isFloat ? val.toFixed(2) : val);
                 });
 
-                // =============================================
-                // 2. Fungsi Membuat Tombol + dan - 
-                // =============================================
                 const createControlBtn = (labelStr, offsetX) => {
                     let btn = document.createElement('a-entity');
                     btn.setAttribute('position', `${offsetX} 0 0.01`);
@@ -191,7 +181,6 @@
 
                     bg.appendChild(border); bg.appendChild(txt); btn.appendChild(bg);
 
-                    // Efek Hover Tombol +/-
                     btn.addEventListener('mouseenter', () => {
                         btn.setAttribute('scale', '1.1 1.1 1.1');
                         txt.setAttribute('color', '#ffffff');
@@ -207,11 +196,9 @@
                     return btn;
                 };
 
-                // Pasang Tombol di Kiri (-) dan Kanan (+) Slider
                 let btnMinus = createControlBtn('-', -(this.data.width / 2) - 0.25);
                 let btnPlus  = createControlBtn('+', (this.data.width / 2) + 0.25);
 
-                // Aksi Tombol Kurang (-)
                 btnMinus.addEventListener('click', () => {
                     btnMinus.setAttribute('scale', '0.8 0.8 0.8');
                     setTimeout(() => btnMinus.setAttribute('scale', '1.1 1.1 1.1'), 100);
@@ -220,7 +207,6 @@
                     if (window.sendMqttCommand) window.sendMqttCommand(self.data.topic, self.data.isFloat ? newVal.toFixed(2) : newVal);
                 });
 
-                // Aksi Tombol Tambah (+)
                 btnPlus.addEventListener('click', () => {
                     btnPlus.setAttribute('scale', '0.8 0.8 0.8');
                     setTimeout(() => btnPlus.setAttribute('scale', '1.1 1.1 1.1'), 100);
@@ -229,18 +215,14 @@
                     if (window.sendMqttCommand) window.sendMqttCommand(self.data.topic, self.data.isFloat ? newVal.toFixed(2) : newVal);
                 });
 
-                // Set Nilai Awal
                 this.setValue(this.data.value);
             },
             setValue: function(val) {
-                // Perbaiki error angka desimal Javascript (misal: 0.1 + 0.2 jadi 0.300004)
                 val = Math.round(val * 1000) / 1000; 
-
-                // Kunci (Clamp) agar tidak melewati batas Minimum & Maksimum
                 if (val < this.data.min) val = this.data.min;
                 if (val > this.data.max) val = this.data.max;
                 
-                this.currentVal = val; // Simpan memori posisi sekarang
+                this.currentVal = val; 
 
                 let percent = (val - this.data.min) / (this.data.max - this.data.min);
                 let fillWidth = percent * this.data.width; let fillX = (-this.data.width / 2) + (fillWidth / 2);
@@ -258,7 +240,7 @@
         });
 
         // ========================================================
-        // KOMPONEN GRAFIK (XR CHART)
+        // KOMPONEN 4: GRAFIK (XR CHART)
         // ========================================================
         AFRAME.registerComponent('xr-chart', {
             schema: { width: {type: 'number', default: 1024}, height: {type: 'number', default: 512} },
@@ -313,7 +295,7 @@
         });
 
         // ========================================================
-        // KOMPONEN SMART ZOOM
+        // KOMPONEN 5: SMART ZOOM
         // ========================================================
         AFRAME.registerComponent('smart-zoom', {
             init: function () {
@@ -338,82 +320,213 @@
                 window.addEventListener('touchend', function(e) { if (e.touches.length < 2) initialDist = null; });
             }
         });
+
+        // ========================================================
+        // KOMPONEN 6: ROTASI UNIVERSAL (PC, MOBILE, OCULUS VR)
+        // ========================================================
+        AFRAME.registerComponent('universal-rotate', {
+            schema: { speed: { default: 1 } },
+            init: function () {
+                this.isDragging = false;
+                this.lastX = 0;
+                this.lastY = 0;
+
+                // Mouse
+                document.addEventListener('mousedown', (e) => {
+                    this.isDragging = true;
+                    this.lastX = e.clientX; this.lastY = e.clientY;
+                });
+                document.addEventListener('mouseup', () => { this.isDragging = false; });
+                document.addEventListener('mousemove', (e) => {
+                    if (!this.isDragging) return;
+                    let dx = e.clientX - this.lastX;
+                    let dy = e.clientY - this.lastY;
+                    this.rotateObject(dx, dy, 0.01);
+                    this.lastX = e.clientX; this.lastY = e.clientY;
+                });
+
+                // Touch
+                document.addEventListener('touchstart', (e) => {
+                    this.isDragging = true;
+                    this.lastX = e.touches[0].clientX; this.lastY = e.touches[0].clientY;
+                });
+                document.addEventListener('touchend', () => { this.isDragging = false; });
+                document.addEventListener('touchmove', (e) => {
+                    if (!this.isDragging) return;
+                    let dx = e.touches[0].clientX - this.lastX;
+                    let dy = e.touches[0].clientY - this.lastY;
+                    this.rotateObject(dx, dy, 0.01);
+                    this.lastX = e.touches[0].clientX; this.lastY = e.touches[0].clientY;
+                });
+
+                // VR Oculus Joystick
+                this.el.sceneEl.addEventListener('axismove', (e) => {
+                    let joyX = e.detail.axis[0];
+                    let joyY = e.detail.axis[1];
+                    if (Math.abs(joyX) > 0.1 || Math.abs(joyY) > 0.1) {
+                        this.rotateObject(joyX, joyY, 0.05);
+                    }
+                });
+            },
+            rotateObject: function(deltaX, deltaY, multiplier) {
+                if (this.data.speed === 0) return; 
+                this.el.object3D.rotation.y += deltaX * multiplier * this.data.speed;
+                this.el.object3D.rotation.x += deltaY * multiplier * this.data.speed;
+            }
+        });
+
+        // ========================================================
+        // KOMPONEN 7: EFEK HOLOGRAM (Format OBJ)
+        // ========================================================
+        AFRAME.registerComponent('hologram-effect', {
+            schema: { color: {type: 'color', default: '#00e5ff'}, opacity: {type: 'number', default: 0.6}, wireframe: {type: 'boolean', default: true} },
+            init: function () {
+                this.el.addEventListener('model-loaded', () => {
+                    const obj = this.el.getObject3D('mesh');
+                    if (!obj) return;
+                    obj.traverse((node) => {
+                        if (node.isMesh) {
+                            node.material = new THREE.MeshStandardMaterial({
+                                color: this.data.color, emissive: this.data.color, emissiveIntensity: 0.8,
+                                transparent: true, opacity: this.data.opacity, wireframe: this.data.wireframe,
+                                blending: THREE.AdditiveBlending, depthWrite: false
+                            });
+                        }
+                    });
+                });
+            }
+        });
+
+        // ========================================================
+        // GLOBAL FUNCTION: FUNGSI UNTUK BUKA/TUTUP PANEL
+        // ========================================================
+        window.toggleCommandPanels = function() {
+            let panelGroup = document.getElementById('panel-group');
+            let btnText = document.getElementById('btn-text');
+            let motor = document.getElementById('holo-motor');
+            let isVisible = panelGroup.getAttribute('visible');
+            
+            panelGroup.setAttribute('visible', !isVisible);
+            
+            if (!isVisible) {
+                btnText.setAttribute('value', 'CLOSE PANEL');
+                btnText.setAttribute('color', '#ff2a6d');
+                motor.setAttribute('universal-rotate', 'speed', 0);
+            } else {
+                btnText.setAttribute('value', 'OPEN COMMAND');
+                btnText.setAttribute('color', '#00e5ff');
+                motor.setAttribute('universal-rotate', 'speed', 1);
+            }
+        };
     </script>
 </head>
+
 <body>
+    <script>
+        // Komponen Rotasi Universal (Mouse, Touch, Oculus Joystick)
+        AFRAME.registerComponent('universal-rotate', {
+            schema: { speed: { default: 1 } },
+            init: function () {
+                this.isDragging = false;
+                this.lastX = 0;
+                this.lastY = 0;
+
+                // Mouse (PC/Laptop)
+                document.addEventListener('mousedown', (e) => {
+                    this.isDragging = true;
+                    this.lastX = e.clientX; this.lastY = e.clientY;
+                });
+                document.addEventListener('mouseup', () => { this.isDragging = false; });
+                document.addEventListener('mousemove', (e) => {
+                    if (!this.isDragging) return;
+                    let dx = e.clientX - this.lastX;
+                    let dy = e.clientY - this.lastY;
+                    this.rotateObject(dx, dy, 0.01);
+                    this.lastX = e.clientX; this.lastY = e.clientY;
+                });
+
+                // Touch (HP/Tablet)
+                document.addEventListener('touchstart', (e) => {
+                    this.isDragging = true;
+                    this.lastX = e.touches[0].clientX; this.lastY = e.touches[0].clientY;
+                });
+                document.addEventListener('touchend', () => { this.isDragging = false; });
+                document.addEventListener('touchmove', (e) => {
+                    if (!this.isDragging) return;
+                    let dx = e.touches[0].clientX - this.lastX;
+                    let dy = e.touches[0].clientY - this.lastY;
+                    this.rotateObject(dx, dy, 0.01);
+                    this.lastX = e.touches[0].clientX; this.lastY = e.touches[0].clientY;
+                });
+
+                // Oculus Quest (Thumbstick)
+                this.el.sceneEl.addEventListener('axismove', (e) => {
+                    let joyX = e.detail.axis[0];
+                    let joyY = e.detail.axis[1];
+                    if (Math.abs(joyX) > 0.1 || Math.abs(joyY) > 0.1) {
+                        this.rotateObject(joyX, joyY, 0.05);
+                    }
+                });
+            },
+            rotateObject: function(deltaX, deltaY, multiplier) {
+                if (this.data.speed === 0) return; 
+                this.el.object3D.rotation.y += deltaX * multiplier * this.data.speed;
+                this.el.object3D.rotation.x += deltaY * multiplier * this.data.speed;
+            }
+        });
+
+        // Komponen Efek Hologram OBJ
+        AFRAME.registerComponent('hologram-effect', {
+            schema: { color: {type: 'color', default: '#00e5ff'}, opacity: {type: 'number', default: 0.6}, wireframe: {type: 'boolean', default: true} },
+            init: function () {
+                this.el.addEventListener('model-loaded', () => {
+                    const obj = this.el.getObject3D('mesh');
+                    if (!obj) return;
+                    obj.traverse((node) => {
+                        if (node.isMesh) {
+                            node.material = new THREE.MeshStandardMaterial({
+                                color: this.data.color, emissive: this.data.color, emissiveIntensity: 0.8,
+                                transparent: true, opacity: this.data.opacity, wireframe: this.data.wireframe,
+                                blending: THREE.AdditiveBlending, depthWrite: false
+                            });
+                        }
+                    });
+                });
+            }
+        });
+
+        // Fungsi Buka/Tutup Panel
+        window.toggleCommandPanels = function() {
+            let panelGroup = document.getElementById('panel-group');
+            let btnText = document.getElementById('btn-text');
+            let motor = document.getElementById('holo-motor');
+            let isVisible = panelGroup.getAttribute('visible');
+            
+            panelGroup.setAttribute('visible', !isVisible);
+            
+            if (!isVisible) {
+                btnText.setAttribute('value', 'CLOSE PANEL');
+                btnText.setAttribute('color', '#ff2a6d');
+                motor.setAttribute('universal-rotate', 'speed', 0); // Matikan rotasi drag saat panel terbuka
+            } else {
+                btnText.setAttribute('value', 'OPEN COMMAND');
+                btnText.setAttribute('color', '#00e5ff');
+                motor.setAttribute('universal-rotate', 'speed', 1); // Aktifkan rotasi kembali
+            }
+        };
+    </script>
 
     <a-scene background="color: #010308" cursor="rayOrigin: mouse">
-
-        <a-entity position="0 1.6 0">
-            <a-camera look-controls wasd-controls smart-zoom>
-                <a-cursor color="#ff2a6d" raycaster="objects: .clickable" 
-                          animation__click="property: scale; startEvents: click; easing: easeOutQuad; dur: 150; from: 0.1 0.1 0.1; to: 1 1 1">
-                </a-cursor>
-            </a-camera>
-        </a-entity>
-
-        <!-- ============================================== -->
-        <!-- TAMBAHAN: KONTROLER VR/AR UNTUK OCULUS QUEST 3 -->
-        <!-- ============================================== -->
-        <a-entity laser-controls="hand: left" raycaster="objects: .clickable; far: 20" line="color: #ff2a6d; opacity: 0.7"></a-entity>
-        <a-entity laser-controls="hand: right" raycaster="objects: .clickable; far: 20" line="color: #00e5ff; opacity: 0.7"></a-entity>
         
-        <!-- Lantai Grid & Cahaya -->
+        <a-assets>
+            <a-asset-item id="model-motor" src="motor.obj"></a-asset-item>
+        </a-assets>
+
         <a-grid width="100" height="100" color="#00e5ff" rotation="-90 0 0" opacity="0.1"></a-grid>
         <a-light type="ambient" color="#333"></a-light>
         <a-light type="point" intensity="2.0" color="#00e5ff" position="0 6 2"></a-light>
         <a-light type="point" intensity="1.0" color="#ff2a6d" position="0 2 -8"></a-light>
 
-        <!-- ORNAMEN SCI-FI: Cincin Reaktor -->
-        <a-entity position="0 2.5 -7" 
-                  geometry="primitive: torus; radius: 4.5; radiusTubular: 0.02; segmentsTubular: 64" 
-                  material="color: #00e5ff; opacity: 0.2; transparent: true; wireframe: true"
-                  animation="property: rotation; to: 0 0 360; loop: true; dur: 20000; easing: linear">
-        </a-entity>
-
-        <!-- ============================================== -->
-        <!-- PANEL TENGAH (UTAMA) -->
-        <!-- ============================================== -->
-        <a-entity position="0 2.5 -6" scale="1.4 1.4 1.4"
-                  animation="property: position; to: 0 2.55 -6; dir: alternate; dur: 3500; loop: true; easing: easeInOutSine">
-            
-            <a-entity geometry="primitive: plane; width: 6.4; height: 5.4" 
-                      sci-fi-panel="width: 6.4; height: 5.4; diagonal: false" 
-                      position="0 -0.5 -0.05"></a-entity>
-
-            <!-- Logo -->
-            <a-image src="logo.png" position="-2.4 1.6 0.1" width="1.1" height="1.1"
-                     animation="property: scale; dir: alternate; dur: 2000; to: 1.05 1.05 1; loop: true"></a-image>
-
-            <a-text value="TEO-XR TELECONTROL" font="exo2bold" color="#ffffff" align="left" width="6.5" position="-1.5 1.9 0.01"></a-text>
-            <a-text value="XR COMMAND CENTER" font="exo2bold" color="#00e5ff" align="left" width="4.5" position="-1.5 1.5 0.01"></a-text>
-            
-            <a-entity position="2.29 1.6 0.09">
-                <a-text value="SYSTEM STATUS" font="exo2bold" color="#a0aec0" align="center" width="3.5" position="0 0.2 0"></a-text>
-                <a-text id="xr-status" value="OFFLINE" font="exo2bold" color="#ff2a6d" align="center" width="5.5" position="0 -0.1 0"></a-text>
-            </a-entity>
-
-            <a-entity position="0 0.4 0.01">
-                <a-plane width="1.8" height="1.0" color="#185b9d" opacity="0.6" position="-1.5 0 0">
-                    <a-entity geometry="primitive: plane; width: 1.9; height: 1.1" material="color: #00e5ff; opacity: 0.3; wireframe: true" position="0 0 -0.01"></a-entity>
-                    <a-text value="LIVE RPM" font="exo2bold" color="#00e5ff" align="center" width="3" position="0 0.25 0.01"></a-text>
-                    <a-text id="xr-rpm" value="0.0" font="monoid" color="#ffffff" align="center" width="8" position="0 -0.15 0.01"></a-text>
-                </a-plane>
-
-                <a-plane width="1.8" height="1.0" color="#ff2a6d" opacity="0.2" position="1.5 0 0">
-                    <a-entity geometry="primitive: plane; width: 1.9; height: 1.1" material="color: #ff2a6d; opacity: 0.3; wireframe: true" position="0 0 -0.01"></a-entity>
-                    <a-text value="SYS ERROR" font="exo2bold" color="#ff2a6d" align="center" width="3" position="0 0.25 0.01"></a-text>
-                    <a-text id="xr-error" value="0.0" font="monoid" color="#ffffff" align="center" width="8" position="0 -0.15 0.01"></a-text>
-                </a-plane>
-            </a-entity>
-
-            <!-- Slider RPM diturunkan widthnya sedikit agar tombol +/- fit di panel -->
-            <a-entity position="0 -1.4 0.01">
-                <a-entity xr-slider="topic: robot1/setpoint; label: TARGET RPM; min: 0; max: 200; value: 120; width: 4.6; step: 1"></a-entity>
-            </a-entity>
-        </a-entity>
-
-        <!-- KAMERA -->
         <a-entity position="0 1.6 0">
             <a-camera look-controls wasd-controls smart-zoom>
                 <a-cursor color="#ff2a6d" raycaster="objects: .clickable" 
@@ -421,86 +534,129 @@
                 </a-cursor>
             </a-camera>
         </a-entity>
+        <a-entity laser-controls="hand: left" raycaster="objects: .clickable; far: 20" line="color: #ff2a6d; opacity: 0.7"></a-entity>
+        <a-entity laser-controls="hand: right" raycaster="objects: .clickable; far: 20" line="color: #00e5ff; opacity: 0.7"></a-entity>
 
-        <!-- ============================================== -->
-        <!-- PANEL KIRI (KONTROL) -->
-        <!-- ============================================== -->
-        <a-entity position="-8.5 2.5 -5.2" rotation="0 35 0" scale="1.3 1.3 1.3"
-                  animation="property: position; to: -8.5 2.55 -5.2; dir: alternate; dur: 3200; loop: true; easing: easeInOutSine">
-            
-            <a-entity geometry="primitive: plane; width: 5.2; height: 5.8" 
-                      sci-fi-panel="width: 5.2; height: 5.8; diagonal: true" 
-                      position="0 -0.5 -0.05"></a-entity>
-            
-            <a-entity position="-1.5 0 0.01">
-                <a-text value="KINEMATIC MODES" font="exo2bold" color="#00e5ff" align="center" width="3.5" position="0 1.8 0"></a-text>
-                
-                <a-entity geometry="primitive: box; depth: 0.05; height: 0.4; width: 1.6" material="color: #ff2a6d" mqtt-button="topic: robot1/mode; payload: STOP" position="0 1.2 0" class="clickable">
-                    <a-text value="STOP" font="exo2bold" align="center" width="4.5" position="0 0 0.03" color="#ffffff"></a-text>
-                </a-entity>
-                <a-entity geometry="primitive: box; depth: 0.05; height: 0.4; width: 1.6" material="color: #0a1128" mqtt-button="topic: robot1/mode; payload: PID" position="0 0.6 0" class="clickable">
-                    <a-text value="PID" font="exo2bold" align="center" width="4.5" position="0 0 0.03" color="#00e5ff"></a-text>
-                </a-entity>
-                <a-entity geometry="primitive: box; depth: 0.05; height: 0.4; width: 1.6" material="color: #0a1128" mqtt-button="topic: robot1/mode; payload: MANUAL" position="0 0.0 0" class="clickable">
-                    <a-text value="MANUAL" font="exo2bold" align="center" width="4.5" position="0 0 0.03" color="#00e5ff"></a-text>
-                </a-entity>
-                
-                <a-text value="DRIVE VECTOR" font="exo2bold" color="#00e5ff" align="center" width="3.5" position="0 -0.8 0"></a-text>
-                <a-entity geometry="primitive: box; depth: 0.05; height: 0.4; width: 1.6" material="color: #185b9d" mqtt-button="topic: robot1/direction; payload: FORWARD" position="0 -1.4 0" class="clickable">
-                    <a-text value="FORWARD" font="exo2bold" align="center" width="4.5" position="0 0 0.03" color="#ffffff"></a-text>
-                </a-entity>
-                <a-entity geometry="primitive: box; depth: 0.05; height: 0.4; width: 1.6" material="color: #185b9d" mqtt-button="topic: robot1/direction; payload: BACKWARD" position="0 -2.0 0" class="clickable">
-                    <a-text value="BACKWARD" font="exo2bold" align="center" width="4.5" position="0 0 0.03" color="#ffffff"></a-text>
-                </a-entity>
-            </a-entity>
-
-            <a-entity position="1.2 0 0.01">
-                <a-text value="SYSTEM TUNING" font="exo2bold" color="#00e5ff" align="center" width="3.5" position="0 1.8 0"></a-text>
-                
-                <!-- Atribut Step ditambahkan ke semua Slider Tuning! -->
-                <a-entity position="0 1.2 0" xr-slider="topic: robot1/pid/kp; label: Kp; min: 0; max: 50; value: 1.5; width: 1.8; isFloat: true; step: 0.1"></a-entity>
-                <a-entity position="0 0.5 0" xr-slider="topic: robot1/pid/ki; label: Ki; min: 0; max: 10; value: 0.05; width: 1.8; isFloat: true; step: 0.01"></a-entity>
-                <a-entity position="0 -0.2 0" xr-slider="topic: robot1/pid/kd; label: Kd; min: 0; max: 10; value: 0.1; width: 1.8; isFloat: true; step: 0.01"></a-entity>
-                <a-entity position="0 -0.9 0" xr-slider="topic: robot1/manual_pwm; label: PWM; min: 0; max: 255; value: 0; width: 1.8; step: 1"></a-entity>
-
-                <a-entity geometry="primitive: box; depth: 0.05; height: 0.5; width: 2.4" material="color: #0a1128" mqtt-button="topic: robot1/config; payload: TRIGGER" position="0 -1.8 0" class="clickable">
-                    <a-text value="TRANSMIT DATA" font="exo2bold" align="center" width="3.5" position="0 0 0.03" color="#00e5ff"></a-text>
-                </a-entity>
-                <a-entity geometry="primitive: box; depth: 0.05; height: 0.5; width: 2.4" material="color: #4ba3d3" mqtt-button="isTest: true" position="0 -2.5 0" class="clickable">
-                    <a-text value="INIT STEP TEST" font="exo2bold" align="center" width="3.5" position="0 0 0.03" color="#ffffff"></a-text>
-                </a-entity>
-            </a-entity>
+        <a-entity id="holo-motor"
+                  position="0 2.5 -4" 
+                  scale="1.5 1.5 1.5" 
+                  obj-model="obj: #model-motor"
+                  hologram-effect="color: #00e5ff; opacity: 0.5; wireframe: true"
+                  universal-rotate="speed: 1">
         </a-entity>
 
-        <!-- ============================================== -->
-        <!-- PANEL KANAN (GRAFIK) -->
-        <!-- ============================================== -->
-        <a-entity position="8.5 2.5 -5.2" rotation="0 -35 0" scale="1.3 1.3 1.3"
-                  animation="property: position; to: 8.5 2.55 -5.2; dir: alternate; dur: 3800; loop: true; easing: easeInOutSine">
-            
-            <a-entity geometry="primitive: plane; width: 5.2; height: 5.8" 
-                      sci-fi-panel="width: 5.2; height: 5.8; diagonal: true" 
-                      position="0 -0.5 -0.05"></a-entity>
-            
-            <a-text value="RESPONSE MATRIX" font="exo2bold" color="#00e5ff" align="center" width="5.5" position="0 1.8 0.01"></a-text>
-            
-            <a-entity id="live-chart" geometry="primitive: plane; width: 4.6; height: 2.6" xr-chart position="0 0.2 0.01"></a-entity>
-            
-            <a-entity position="0 -1.8 0.01">
-                <a-entity geometry="primitive: plane; width: 1.4; height: 0.8" material="color: #0a1128; opacity: 0.8" position="-1.5 0 -0.01"></a-entity>
-                <a-text value="RISE TIME" font="exo2bold" color="#888888" align="center" width="2.5" position="-1.5 0.2 0"></a-text>
-                <a-text id="xr-rise" value="0.0s" font="monoid" color="#00e5ff" align="center" width="5" position="-1.5 -0.15 0"></a-text>
-
-                <a-entity geometry="primitive: plane; width: 1.4; height: 0.8" material="color: #0a1128; opacity: 0.8" position="0 0 -0.01"></a-entity>
-                <a-text value="OVERSHOOT" font="exo2bold" color="#888888" align="center" width="2.5" position="0 0.2 0"></a-text>
-                <a-text id="xr-over" value="0.0%" font="monoid" color="#ff2a6d" align="center" width="5" position="0 -0.15 0"></a-text>
-
-                <a-entity geometry="primitive: plane; width: 1.4; height: 0.8" material="color: #0a1128; opacity: 0.8" position="1.5 0 -0.01"></a-entity>
-                <a-text value="SETTLING" font="exo2bold" color="#888888" align="center" width="2.5" position="1.5 0.2 0"></a-text>
-                <a-text id="xr-settle" value="0.0s" font="monoid" color="#4ba3d3" align="center" width="5" position="1.5 -0.15 0"></a-text>
-            </a-entity>
+        <a-entity id="menu-trigger" position="2.2 1.2 -3.5" class="clickable"
+                  geometry="primitive: box; width: 1.2; height: 0.4; depth: 0.1"
+                  material="color: #0a1128; opacity: 0.9"
+                  onclick="toggleCommandPanels()"
+                  animation__hover="property: scale; startEvents: mouseenter; to: 1.1 1.1 1.1; dur: 150"
+                  animation__leave="property: scale; startEvents: mouseleave; to: 1 1 1; dur: 150">
+            <a-entity geometry="primitive: box; width: 1.25; height: 0.45; depth: 0.11" material="color: #00e5ff; wireframe: true" position="0 0 -0.01"></a-entity>
+            <a-text id="btn-text" value="OPEN COMMAND" font="exo2bold" align="center" color="#00e5ff" position="0 0 0.06" width="3"></a-text>
         </a-entity>
 
+        <a-entity id="panel-group" visible="false">
+            
+            <a-entity position="0 2.5 -7" 
+                      geometry="primitive: torus; radius: 4.5; radiusTubular: 0.02; segmentsTubular: 64" 
+                      material="color: #00e5ff; opacity: 0.2; transparent: true; wireframe: true"
+                      animation="property: rotation; to: 0 0 360; loop: true; dur: 20000; easing: linear">
+            </a-entity>
+
+            <a-entity position="0 2.5 -6" scale="1.4 1.4 1.4"
+                      animation="property: position; to: 0 2.55 -6; dir: alternate; dur: 3500; loop: true; easing: easeInOutSine">
+                <a-entity geometry="primitive: plane; width: 6.4; height: 5.4" sci-fi-panel="width: 6.4; height: 5.4; diagonal: false" position="0 -0.5 -0.05"></a-entity>
+                <a-image src="logo.png" position="-2.4 1.6 0.1" width="1.1" height="1.1" animation="property: scale; dir: alternate; dur: 2000; to: 1.05 1.05 1; loop: true"></a-image>
+                <a-text value="TEO-XR TELECONTROL" font="exo2bold" color="#ffffff" align="left" width="6.5" position="-1.5 1.9 0.01"></a-text>
+                <a-text value="XR COMMAND CENTER" font="exo2bold" color="#00e5ff" align="left" width="4.5" position="-1.5 1.5 0.01"></a-text>
+                
+                <a-entity position="2.29 1.6 0.09">
+                    <a-text value="SYSTEM STATUS" font="exo2bold" color="#a0aec0" align="center" width="3.5" position="0 0.2 0"></a-text>
+                    <a-text id="xr-status" value="OFFLINE" font="exo2bold" color="#ff2a6d" align="center" width="5.5" position="0 -0.1 0"></a-text>
+                </a-entity>
+
+                <a-entity position="0 0.4 0.01">
+                    <a-plane width="1.8" height="1.0" color="#185b9d" opacity="0.6" position="-1.5 0 0">
+                        <a-entity geometry="primitive: plane; width: 1.9; height: 1.1" material="color: #00e5ff; opacity: 0.3; wireframe: true" position="0 0 -0.01"></a-entity>
+                        <a-text value="LIVE RPM" font="exo2bold" color="#00e5ff" align="center" width="3" position="0 0.25 0.01"></a-text>
+                        <a-text id="xr-rpm" value="0.0" font="monoid" color="#ffffff" align="center" width="8" position="0 -0.15 0.01"></a-text>
+                    </a-plane>
+
+                    <a-plane width="1.8" height="1.0" color="#ff2a6d" opacity="0.2" position="1.5 0 0">
+                        <a-entity geometry="primitive: plane; width: 1.9; height: 1.1" material="color: #ff2a6d; opacity: 0.3; wireframe: true" position="0 0 -0.01"></a-entity>
+                        <a-text value="SYS ERROR" font="exo2bold" color="#ff2a6d" align="center" width="3" position="0 0.25 0.01"></a-text>
+                        <a-text id="xr-error" value="0.0" font="monoid" color="#ffffff" align="center" width="8" position="0 -0.15 0.01"></a-text>
+                    </a-plane>
+                </a-entity>
+
+                <a-entity position="0 -1.4 0.01">
+                    <a-entity xr-slider="topic: robot1/setpoint; label: TARGET RPM; min: 0; max: 200; value: 120; width: 4.6; step: 1"></a-entity>
+                </a-entity>
+            </a-entity>
+
+            <a-entity position="-8.5 2.5 -5.2" rotation="0 35 0" scale="1.3 1.3 1.3"
+                      animation="property: position; to: -8.5 2.55 -5.2; dir: alternate; dur: 3200; loop: true; easing: easeInOutSine">
+                <a-entity geometry="primitive: plane; width: 5.2; height: 5.8" sci-fi-panel="width: 5.2; height: 5.8; diagonal: true" position="0 -0.5 -0.05"></a-entity>
+                
+                <a-entity position="-1.5 0 0.01">
+                    <a-text value="KINEMATIC MODES" font="exo2bold" color="#00e5ff" align="center" width="3.5" position="0 1.8 0"></a-text>
+                    <a-entity geometry="primitive: box; depth: 0.05; height: 0.4; width: 1.6" material="color: #ff2a6d" mqtt-button="topic: robot1/mode; payload: STOP" position="0 1.2 0" class="clickable">
+                        <a-text value="STOP" font="exo2bold" align="center" width="4.5" position="0 0 0.03" color="#ffffff"></a-text>
+                    </a-entity>
+                    <a-entity geometry="primitive: box; depth: 0.05; height: 0.4; width: 1.6" material="color: #0a1128" mqtt-button="topic: robot1/mode; payload: PID" position="0 0.6 0" class="clickable">
+                        <a-text value="PID" font="exo2bold" align="center" width="4.5" position="0 0 0.03" color="#00e5ff"></a-text>
+                    </a-entity>
+                    <a-entity geometry="primitive: box; depth: 0.05; height: 0.4; width: 1.6" material="color: #0a1128" mqtt-button="topic: robot1/mode; payload: MANUAL" position="0 0.0 0" class="clickable">
+                        <a-text value="MANUAL" font="exo2bold" align="center" width="4.5" position="0 0 0.03" color="#00e5ff"></a-text>
+                    </a-entity>
+                    
+                    <a-text value="DRIVE VECTOR" font="exo2bold" color="#00e5ff" align="center" width="3.5" position="0 -0.8 0"></a-text>
+                    <a-entity geometry="primitive: box; depth: 0.05; height: 0.4; width: 1.6" material="color: #185b9d" mqtt-button="topic: robot1/direction; payload: FORWARD" position="0 -1.4 0" class="clickable">
+                        <a-text value="FORWARD" font="exo2bold" align="center" width="4.5" position="0 0 0.03" color="#ffffff"></a-text>
+                    </a-entity>
+                    <a-entity geometry="primitive: box; depth: 0.05; height: 0.4; width: 1.6" material="color: #185b9d" mqtt-button="topic: robot1/direction; payload: BACKWARD" position="0 -2.0 0" class="clickable">
+                        <a-text value="BACKWARD" font="exo2bold" align="center" width="4.5" position="0 0 0.03" color="#ffffff"></a-text>
+                    </a-entity>
+                </a-entity>
+
+                <a-entity position="1.2 0 0.01">
+                    <a-text value="SYSTEM TUNING" font="exo2bold" color="#00e5ff" align="center" width="3.5" position="0 1.8 0"></a-text>
+                    <a-entity position="0 1.2 0" xr-slider="topic: robot1/pid/kp; label: Kp; min: 0; max: 50; value: 1.5; width: 1.8; isFloat: true; step: 0.1"></a-entity>
+                    <a-entity position="0 0.5 0" xr-slider="topic: robot1/pid/ki; label: Ki; min: 0; max: 10; value: 0.05; width: 1.8; isFloat: true; step: 0.01"></a-entity>
+                    <a-entity position="0 -0.2 0" xr-slider="topic: robot1/pid/kd; label: Kd; min: 0; max: 10; value: 0.1; width: 1.8; isFloat: true; step: 0.01"></a-entity>
+                    <a-entity position="0 -0.9 0" xr-slider="topic: robot1/manual_pwm; label: PWM; min: 0; max: 255; value: 0; width: 1.8; step: 1"></a-entity>
+
+                    <a-entity geometry="primitive: box; depth: 0.05; height: 0.5; width: 2.4" material="color: #0a1128" mqtt-button="topic: robot1/config; payload: TRIGGER" position="0 -1.8 0" class="clickable">
+                        <a-text value="TRANSMIT DATA" font="exo2bold" align="center" width="3.5" position="0 0 0.03" color="#00e5ff"></a-text>
+                    </a-entity>
+                    <a-entity geometry="primitive: box; depth: 0.05; height: 0.5; width: 2.4" material="color: #4ba3d3" mqtt-button="isTest: true" position="0 -2.5 0" class="clickable">
+                        <a-text value="INIT STEP TEST" font="exo2bold" align="center" width="3.5" position="0 0 0.03" color="#ffffff"></a-text>
+                    </a-entity>
+                </a-entity>
+            </a-entity>
+
+            <a-entity position="8.5 2.5 -5.2" rotation="0 -35 0" scale="1.3 1.3 1.3"
+                      animation="property: position; to: 8.5 2.55 -5.2; dir: alternate; dur: 3800; loop: true; easing: easeInOutSine">
+                <a-entity geometry="primitive: plane; width: 5.2; height: 5.8" sci-fi-panel="width: 5.2; height: 5.8; diagonal: true" position="0 -0.5 -0.05"></a-entity>
+                <a-text value="RESPONSE MATRIX" font="exo2bold" color="#00e5ff" align="center" width="5.5" position="0 1.8 0.01"></a-text>
+                <a-entity id="live-chart" geometry="primitive: plane; width: 4.6; height: 2.6" xr-chart position="0 0.2 0.01"></a-entity>
+                
+                <a-entity position="0 -1.8 0.01">
+                    <a-entity geometry="primitive: plane; width: 1.4; height: 0.8" material="color: #0a1128; opacity: 0.8" position="-1.5 0 -0.01"></a-entity>
+                    <a-text value="RISE TIME" font="exo2bold" color="#888888" align="center" width="2.5" position="-1.5 0.2 0"></a-text>
+                    <a-text id="xr-rise" value="0.0s" font="monoid" color="#00e5ff" align="center" width="5" position="-1.5 -0.15 0"></a-text>
+
+                    <a-entity geometry="primitive: plane; width: 1.4; height: 0.8" material="color: #0a1128; opacity: 0.8" position="0 0 -0.01"></a-entity>
+                    <a-text value="OVERSHOOT" font="exo2bold" color="#888888" align="center" width="2.5" position="0 0.2 0"></a-text>
+                    <a-text id="xr-over" value="0.0%" font="monoid" color="#ff2a6d" align="center" width="5" position="0 -0.15 0"></a-text>
+
+                    <a-entity geometry="primitive: plane; width: 1.4; height: 0.8" material="color: #0a1128; opacity: 0.8" position="1.5 0 -0.01"></a-entity>
+                    <a-text value="SETTLING" font="exo2bold" color="#888888" align="center" width="2.5" position="1.5 0.2 0"></a-text>
+                    <a-text id="xr-settle" value="0.0s" font="monoid" color="#4ba3d3" align="center" width="5" position="1.5 -0.15 0"></a-text>
+                </a-entity>
+            </a-entity>
+
+        </a-entity>
     </a-scene>
 
     <script>
@@ -579,6 +735,12 @@
                 document.getElementById('xr-rpm').setAttribute('value', data.speed.toFixed(1));
                 document.getElementById('xr-error').setAttribute('value', data.error.toFixed(1));
                 
+                // ROTASI MOTOR BERDASARKAN RPM MQTT
+                const holoMotor = document.getElementById('holo-motor');
+                if (holoMotor && holoMotor.object3D) {
+                    holoMotor.object3D.rotation.x -= data.speed * 0.005; 
+                }
+
                 const chartEl = document.getElementById('live-chart');
                 if(chartEl && chartEl.components['xr-chart']) {
                     let target = (document.getElementById('xr-status').getAttribute('value') === 'ONLINE' && window.currentSetpoint > 0) ? window.currentSetpoint : 0;
@@ -614,4 +776,3 @@
         connectMQTT();
     </script>
 </body>
-</html>
