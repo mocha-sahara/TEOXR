@@ -343,6 +343,21 @@
 <body>
 
     <a-scene background="color: #010308" cursor="rayOrigin: mouse">
+
+        <a-entity position="0 1.6 0">
+            <a-camera look-controls wasd-controls smart-zoom>
+                <a-cursor color="#ff2a6d" raycaster="objects: .clickable" 
+                          animation__click="property: scale; startEvents: click; easing: easeOutQuad; dur: 150; from: 0.1 0.1 0.1; to: 1 1 1">
+                </a-cursor>
+            </a-camera>
+        </a-entity>
+
+        <!-- ============================================== -->
+        <!-- TAMBAHAN: KONTROLER VR/AR UNTUK OCULUS QUEST 3 -->
+        <!-- ============================================== -->
+        <a-entity laser-controls="hand: left" raycaster="objects: .clickable; far: 20" line="color: #ff2a6d; opacity: 0.7"></a-entity>
+        <a-entity laser-controls="hand: right" raycaster="objects: .clickable; far: 20" line="color: #00e5ff; opacity: 0.7"></a-entity>
+        
         <!-- Lantai Grid & Cahaya -->
         <a-grid width="100" height="100" color="#00e5ff" rotation="-90 0 0" opacity="0.1"></a-grid>
         <a-light type="ambient" color="#333"></a-light>
