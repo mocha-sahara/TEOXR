@@ -293,7 +293,7 @@
         });
 
         // ========================================================
-        // 7. KOMPONEN EFEK HOLOGRAM (Update Warna Sederhana)
+        // 7. KOMPONEN EFEK HOLOGRAM (DENGAN AUTO-CENTER FIX)
         // ========================================================
         AFRAME.registerComponent('hologram-effect', {
             schema: { color: {type: 'color', default: '#00e5ff'}, opacity: {type: 'number', default: 0.6}, wireframe: {type: 'boolean', default: true} },
@@ -305,6 +305,16 @@
                     
                     obj.traverse((node) => {
                         if (node.isMesh) {
+                            
+                            // =======================================================
+                            // KODE AJAIB: MEMPERBAIKI POROS (AUTO-CENTER GEOMETRY)
+                            // Ini memaksa titik pusat objek agar persis di tengah fisik
+                            // sehingga putaran tidak akan mengorbit keluar cangkang.
+                            // =======================================================
+                            node.geometry.computeBoundingBox();
+                            node.geometry.center();
+                            // =======================================================
+
                             let mat = new THREE.MeshStandardMaterial({
                                 color: this.data.color, emissive: this.data.color, emissiveIntensity: 0.8,
                                 transparent: true, opacity: this.data.opacity, wireframe: this.data.wireframe,
