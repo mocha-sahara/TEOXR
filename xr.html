@@ -293,7 +293,7 @@
         });
 
         // ========================================================
-        // 7. KOMPONEN EFEK HOLOGRAM & HEATMAP
+        // 7. KOMPONEN EFEK HOLOGRAM (Update Warna Sederhana)
         // ========================================================
         AFRAME.registerComponent('hologram-effect', {
             schema: { color: {type: 'color', default: '#00e5ff'}, opacity: {type: 'number', default: 0.6}, wireframe: {type: 'boolean', default: true} },
@@ -302,17 +302,9 @@
                 this.el.addEventListener('model-loaded', () => {
                     const obj = this.el.getObject3D('mesh');
                     if (!obj) return;
-                    const box = new THREE.Box3().setFromObject(obj);
-                    const center = box.getCenter(new THREE.Vector3());
-
+                    
                     obj.traverse((node) => {
                         if (node.isMesh) {
-                            node.userData.originalPosition = node.position.clone();
-                            let nodeBox = new THREE.Box3().setFromObject(node);
-                            let nodeCenter = nodeBox.getCenter(new THREE.Vector3());
-                            let direction = nodeCenter.sub(center).normalize();
-                            node.userData.explodeDirection = direction;
-
                             let mat = new THREE.MeshStandardMaterial({
                                 color: this.data.color, emissive: this.data.color, emissiveIntensity: 0.8,
                                 transparent: true, opacity: this.data.opacity, wireframe: this.data.wireframe,
@@ -359,7 +351,8 @@
         window.isExploded = false;
         window.toggleExplodeView = function() {
             window.isExploded = !window.isExploded;
-            let stator = document.getElementById('holo-stator'); let rotor = document.getElementById('holo-rotor');
+            let stator = document.getElementById('holo-stator'); 
+            let rotor = document.getElementById('holo-rotor');
             let bt = document.getElementById('explode-text');
             
             if (window.isExploded) {
@@ -370,8 +363,10 @@
                 bt.setAttribute('color', '#00e5ff');
             }
 
+            // Menganimasikan objek terpisah secara langsung di A-Frame
             let targetStator = window.isExploded ? "0 0 1.5" : "0 0 0";
             let targetRotor = window.isExploded ? "0 0 -1.5" : "0 0 0";
+            
             stator.setAttribute('animation', `property: position; to: ${targetStator}; dur: 800; easing: easeInOutQuad`);
             rotor.setAttribute('animation', `property: position; to: ${targetRotor}; dur: 800; easing: easeInOutQuad`);
         };
@@ -402,8 +397,17 @@
         <a-entity laser-controls="hand: right" raycaster="objects: .clickable; far: 20" line="color: #00e5ff; opacity: 0.7"></a-entity>
 
         <a-entity id="motor-group" position="0 2.5 -4" scale="1.5 1.5 1.5" universal-rotate="speed: 1">
-            <a-entity id="holo-stator" obj-model="obj: #model-stator" hologram-effect="color: #00e5ff; opacity: 0.3; wireframe: true"></a-entity>
-            <a-entity id="holo-rotor" obj-model="obj: #model-rotor" hologram-effect="color: #ff2a6d; opacity: 0.8; wireframe: false"></a-entity>
+            
+            <a-entity id="holo-stator" 
+                      obj-model="obj: #model-stator" 
+                      hologram-effect="color: #00e5ff; opacity: 0.3; wireframe: true">
+            </a-entity>
+
+            <a-entity id="holo-rotor" 
+                      obj-model="obj: #model-rotor" 
+                      hologram-effect="color: #ff2a6d; opacity: 0.8; wireframe: false">
+            </a-entity>
+
         </a-entity>
 
         <a-entity id="menu-trigger" position="2.2 1.2 -3.5" class="clickable"
@@ -606,13 +610,19 @@
                 document.getElementById('xr-rpm').setAttribute('value', data.speed.toFixed(1));
                 document.getElementById('xr-error').setAttribute('value', data.error.toFixed(1));
                 
-                // ROTASI ROTOR BERDASARKAN RPM MQTT
+                // -----------------------------------------------------------------
+                // ROTASI ROTOR (FIX GIMBAL LOCK)
+                // Menggunakan fungsi internal rotateX/Y/Z agar rotasi sumbu lokal
+                // Jika arah putaran masih kurang pas, ganti 'rotateX' jadi 'rotateZ'
+                // -----------------------------------------------------------------
                 const holoRotor = document.getElementById('holo-rotor');
                 if (holoRotor && holoRotor.object3D) {
-                    holoRotor.object3D.rotation.y -= data.speed * 0.005; // Sesuaikan sumbu x/y/z jika perlu
+                    holoRotor.object3D.rotateX(-data.speed * 0.005); 
                 }
 
-                // HEATMAP: Berubah warna jika error tinggi
+                // -----------------------------------------------------------------
+                // HEATMAP STATOR: Berubah warna ke Kuning/Merah jika error tinggi
+                // -----------------------------------------------------------------
                 const holoStator = document.getElementById('holo-stator');
                 if (holoStator) {
                     let err = Math.abs(data.error);
