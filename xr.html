@@ -293,7 +293,7 @@
         });
 
         // ========================================================
-        // 7. KOMPONEN EFEK HOLOGRAM (DENGAN AUTO-CENTER FIX)
+        // 7. KOMPONEN EFEK HOLOGRAM & AUTO-CENTER
         // ========================================================
         AFRAME.registerComponent('hologram-effect', {
             schema: { color: {type: 'color', default: '#00e5ff'}, opacity: {type: 'number', default: 0.6}, wireframe: {type: 'boolean', default: true} },
@@ -305,7 +305,7 @@
                     
                     obj.traverse((node) => {
                         if (node.isMesh) {
-                            
+                            // Kode untuk mengunci poros putar persis di tengah fisik objek
                             node.geometry.computeBoundingBox();
                             node.geometry.center();
 
@@ -353,6 +353,10 @@
         };
 
         window.isExploded = false;
+        
+        // VARIABEL OFFSET ROTOR: Sesuaikan angka 0.3 ini jika kurang pas
+        window.rotorOffsetX = 0.3; 
+
         window.toggleExplodeView = function() {
             window.isExploded = !window.isExploded;
             let stator = document.getElementById('holo-stator'); 
@@ -367,9 +371,11 @@
                 bt.setAttribute('color', '#00e5ff');
             }
 
-            // Menganimasikan objek terpisah secara langsung di A-Frame
-            let targetStator = window.isExploded ? "0 0 1.5" : "0 0 0";
-            let targetRotor = window.isExploded ? "0 0 -1.5" : "0 0 0";
+            // PERBAIKAN SUMBU LEDAKAN: Meledak di Sumbu X (kiri-kanan)
+            let targetStator = window.isExploded ? "-1.2 0 0" : "0 0 0";
+            
+            // Saat dirakit kembali, Rotor kembali ke posisi Offset (0.3), bukan 0
+            let targetRotor = window.isExploded ? "1.2 0 0" : window.rotorOffsetX + " 0 0";
             
             stator.setAttribute('animation', `property: position; to: ${targetStator}; dur: 800; easing: easeInOutQuad`);
             rotor.setAttribute('animation', `property: position; to: ${targetRotor}; dur: 800; easing: easeInOutQuad`);
@@ -408,6 +414,7 @@
             </a-entity>
 
             <a-entity id="holo-rotor" 
+                      position="0.3 0 0"
                       obj-model="obj: #model-rotor" 
                       hologram-effect="color: #ff2a6d; opacity: 0.8; wireframe: false">
             </a-entity>
@@ -613,13 +620,10 @@
                 
                 document.getElementById('xr-rpm').setAttribute('value', data.speed.toFixed(1));
                 document.getElementById('xr-error').setAttribute('value', data.error.toFixed(1));
-
-                // -----------------------------------------------------------------
-                // ROTASI ROTOR (MEMILIN SEPERTI MATA BOR DI SUMBU X)
-                // -----------------------------------------------------------------
+                
+                // ROTASI ROTOR (Menggunakan Sumbu X)
                 const holoRotor = document.getElementById('holo-rotor');
                 if (holoRotor && holoRotor.object3D) {
-                    // Gunakan rotateX karena poros panjang model Anda membentang di sumbu X
                     holoRotor.object3D.rotateX(-data.speed * 0.005); 
                 }
 
@@ -630,7 +634,6 @@
                     let heatColor = err > 40 ? '#ff2a6d' : (err > 15 ? '#ffea00' : '#00e5ff');
                     holoStator.setAttribute('hologram-effect', 'color', heatColor);
                 }
-
 
                 const chartEl = document.getElementById('live-chart');
                 if(chartEl && chartEl.components['xr-chart']) {
