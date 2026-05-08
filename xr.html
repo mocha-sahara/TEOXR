@@ -619,15 +619,14 @@
                 
                 document.getElementById('xr-rpm').setAttribute('value', data.speed.toFixed(1));
                 document.getElementById('xr-error').setAttribute('value', data.error.toFixed(1));
-                
-                // =========================================================
-                // PERBAIKAN ROTASI (MENGUNCI DI GARIS SUMBU Z)
-                // =========================================================
+
+                // -----------------------------------------------------------------
+                // ROTASI ROTOR (FIX SUMBU Y)
+                // -----------------------------------------------------------------
                 const holoRotor = document.getElementById('holo-rotor');
                 if (holoRotor && holoRotor.object3D) {
-                    // Menggunakan rotateZ untuk memutar murni pada poros Z lokal
-                    // Hapus tanda minus (-) jika putaran ternyata terbalik arahnya
-                    holoRotor.object3D.rotateZ(data.speed * 0.005); 
+                    // Gunakan rotateY untuk poros yang memanjang
+                    holoRotor.object3D.rotateY(-data.speed * 0.005); 
                 }
 
                 // HEATMAP STATOR: Berubah warna ke Kuning/Merah jika error tinggi
