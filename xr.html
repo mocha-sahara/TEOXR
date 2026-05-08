@@ -610,25 +610,24 @@
                 document.getElementById('xr-rpm').setAttribute('value', data.speed.toFixed(1));
                 document.getElementById('xr-error').setAttribute('value', data.error.toFixed(1));
                 
-                // -----------------------------------------------------------------
-                // ROTASI ROTOR (FIX GIMBAL LOCK)
-                // -----------------------------------------------------------------
+                // =========================================================
+                // PERBAIKAN ROTASI (MENGUNCI DI GARIS SUMBU Z)
+                // =========================================================
                 const holoRotor = document.getElementById('holo-rotor');
                 if (holoRotor && holoRotor.object3D) {
+                    // Menggunakan rotateZ untuk memutar murni pada poros Z lokal
+                    // Hapus tanda minus (-) jika putaran ternyata terbalik arahnya
                     holoRotor.object3D.rotateZ(-data.speed * 0.005); 
                 }
 
-                
-
-                // -----------------------------------------------------------------
                 // HEATMAP STATOR: Berubah warna ke Kuning/Merah jika error tinggi
-                // -----------------------------------------------------------------
                 const holoStator = document.getElementById('holo-stator');
                 if (holoStator) {
                     let err = Math.abs(data.error);
                     let heatColor = err > 40 ? '#ff2a6d' : (err > 15 ? '#ffea00' : '#00e5ff');
                     holoStator.setAttribute('hologram-effect', 'color', heatColor);
                 }
+
 
                 const chartEl = document.getElementById('live-chart');
                 if(chartEl && chartEl.components['xr-chart']) {
