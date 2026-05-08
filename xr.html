@@ -354,8 +354,8 @@
 
         window.isExploded = false;
         
-
-        window.rotorOffsetX = 1.8; 
+        // VARIABEL OFFSET ROTOR: Sesuaikan angka 0.3 ini jika kurang pas
+        window.rotorOffsetX = 0.3; 
 
         window.toggleExplodeView = function() {
             window.isExploded = !window.isExploded;
@@ -414,7 +414,7 @@
             </a-entity>
 
             <a-entity id="holo-rotor" 
-                      position="1.8 0 0"
+                      position="0.3 0 0"
                       obj-model="obj: #model-rotor" 
                       hologram-effect="color: #ff2a6d; opacity: 0.8; wireframe: false">
             </a-entity>
