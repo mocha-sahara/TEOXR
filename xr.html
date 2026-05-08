@@ -396,7 +396,7 @@
         <a-entity laser-controls="hand: left" raycaster="objects: .clickable; far: 20" line="color: #ff2a6d; opacity: 0.7"></a-entity>
         <a-entity laser-controls="hand: right" raycaster="objects: .clickable; far: 20" line="color: #00e5ff; opacity: 0.7"></a-entity>
 
-        <a-entity id="motor-group" position="0 2.5 -4" scale="1.5 1.5 1.5" universal-rotate="speed: 1">
+        <a-entity id="motor-group" position="0 2.5 -4" scale="0.9 0.9 0.9" universal-rotate="speed: 1">
             
             <a-entity id="holo-stator" 
                       obj-model="obj: #model-stator" 
@@ -612,13 +612,13 @@
                 
                 // -----------------------------------------------------------------
                 // ROTASI ROTOR (FIX GIMBAL LOCK)
-                // Menggunakan fungsi internal rotateX/Y/Z agar rotasi sumbu lokal
-                // Jika arah putaran masih kurang pas, ganti 'rotateX' jadi 'rotateZ'
                 // -----------------------------------------------------------------
                 const holoRotor = document.getElementById('holo-rotor');
                 if (holoRotor && holoRotor.object3D) {
-                    holoRotor.object3D.rotateX(-data.speed * 0.005); 
+                    holoRotor.object3D.rotateZ(-data.speed * 0.005); 
                 }
+
+                
 
                 // -----------------------------------------------------------------
                 // HEATMAP STATOR: Berubah warna ke Kuning/Merah jika error tinggi
