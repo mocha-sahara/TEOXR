@@ -408,17 +408,17 @@
 
         <a-entity id="motor-group" position="-2 4 -6" scale="0.8 0.8 0.8" universal-rotate="speed: 1">
             
-            <!-- Warna awal disesuaikan ke Biru Hologram -->
+            <!-- Warna Stator diubah ke Abu-abu (#888888) -->
             <a-entity id="holo-stator" 
                       obj-model="obj: #model-stator" 
-                      hologram-effect="color: #0088ff; opacity: 0.3; wireframe: true">
+                      hologram-effect="color: #888888; opacity: 0.3; wireframe: true">
             </a-entity>
 
-            <!-- Diubah warnanya menjadi Oranye Neon -->
+            <!-- Warna Rotor diubah ke Abu-abu Terang (#cccccc) -->
             <a-entity id="holo-rotor" 
                       position="0.7 0 0"
                       obj-model="obj: #model-rotor" 
-                      hologram-effect="color: #ff7300; opacity: 0.8; wireframe: false">
+                      hologram-effect="color: #cccccc; opacity: 0.8; wireframe: false">
             </a-entity>
 
         </a-entity>
@@ -629,11 +629,11 @@
                     holoRotor.object3D.rotateX(-data.speed * 0.005); 
                 }
 
-                // HEATMAP STATOR: Disesuaikan dengan base color baru (Biru Hologram -> Oranye/Kuning -> Merah)
+                // HEATMAP STATOR: Disesuaikan dengan base color baru (Abu-abu -> Kuning -> Merah)
                 const holoStator = document.getElementById('holo-stator');
                 if (holoStator) {
                     let err = Math.abs(data.error);
-                    let heatColor = err > 40 ? '#ff003c' : (err > 15 ? '#ffb700' : '#0088ff');
+                    let heatColor = err > 40 ? '#ff003c' : (err > 15 ? '#ffb700' : '#888888');
                     holoStator.setAttribute('hologram-effect', 'color', heatColor);
                 }
 
